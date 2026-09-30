@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import DEV_SECRET_KEY, settings
-from app.routers import auth, cards, districts
+from app.routers import auth, cards, districts, summary
 
 
 def _check_production_secret() -> None:
@@ -49,6 +49,7 @@ async def security_headers(request: Request, call_next):
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(districts.router, prefix="/api/districts", tags=["districts"])
 app.include_router(cards.router, prefix="/api/cards", tags=["cards"])
+app.include_router(summary.router, prefix="/api", tags=["summary"])
 
 Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
