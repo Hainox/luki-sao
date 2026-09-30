@@ -4,6 +4,11 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 
+// Куда dev-сервер проксирует /api и /uploads. Если локально запущен и
+// журнал обходов (он тоже на :8000), поднимите API этого приложения на
+// другом порту и укажите его здесь: LUKI_API_PROXY=http://localhost:8010.
+const apiTarget = process.env.LUKI_API_PROXY ?? 'http://localhost:8000'
+
 export default defineConfig({
   plugins: [
     react(),
@@ -69,8 +74,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:8000', changeOrigin: true },
-      '/uploads': { target: 'http://localhost:8000', changeOrigin: true },
+      '/api': { target: apiTarget, changeOrigin: true },
+      '/uploads': { target: apiTarget, changeOrigin: true },
     },
   },
 })

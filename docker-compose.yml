@@ -1,0 +1,56 @@
+name: luki-sao-dev
+
+# Локальный запуск для разработки: порты опубликованы, без внешних сетей.
+#   cp .env.example .env   # и поправьте JIRAJURA_API_URL
+#   docker compose up --build
+# Приложение: http://localhost:8080, API: http://localhost:8000/api/docs
+#
+# Вход идёт через настоящий журнал обходов (JIRAJURA_API_URL). По умолчанию —
+# боевой https://obhod-sao.ru: там работают обычные логины сотрудников.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: luki_sao
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d luki_sao"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  luki-api:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/luki_sao
+      APP_ENV: development
+      JIRAJURA_API_URL: ${JIRAJURA_API_URL:-https://obhod-sao.ru}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+      UPLOAD_DIR: /app/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  luki-web:
+    build:
+      context: ./frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - luki-api
+
+volumes:
+  pgdata-dev:

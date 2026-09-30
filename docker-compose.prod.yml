@@ -1,0 +1,91 @@
+name: luki-sao
+
+# Продакшн-стек «Люки САО». Живёт на том же сервере, что и журнал обходов
+# (JiraJura), но отдельным compose-проектом: своя БД, свои тома, ни одного
+# опубликованного порта. Снаружи сайт доступен только через TLS-proxy
+# журнала обходов (luki.obhod-sao.ru → luki-web:8080 по сети
+# jirajura_default), см. deploy/README.md.
+#
+# Имена сервисов luki-api/luki-web, а не api/web, — не косметика: compose
+# регистрирует имя сервиса как DNS-имя во ВСЕХ сетях, куда сервис входит.
+# Сервис «api» в сети jirajura_default стал бы вторым «api» рядом с API
+# журнала обходов, и его proxy (и наш же вход через http://api:8000) стал
+# бы случайно попадать не в тот контейнер.
+#
+# Запуск: docker compose -f docker-compose.prod.yml up -d --build
+# (переменные — из .env рядом с этим файлом, см. .env.example).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: luki_sao
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    restart: unless-stopped
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d luki_sao"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  luki-api:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/luki_sao
+      SECRET_KEY: ${SECRET_KEY:?задайте SECRET_KEY в .env}
+      APP_ENV: production
+      JIRAJURA_API_URL: ${JIRAJURA_API_URL:-http://api:8000}
+      MAX_PHOTO_SIZE_MB: ${MAX_PHOTO_SIZE_MB:-20}
+      CORS_ORIGINS: https://${DOMAIN:-luki.obhod-sao.ru}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - ./data/uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      internal: {}
+      jirajura:
+        aliases:
+          - luki-api
+    restart: unless-stopped
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  luki-web:
+    build:
+      context: ./frontend
+    depends_on:
+      - luki-api
+    networks:
+      internal: {}
+      jirajura:
+        aliases:
+          - luki-web
+    restart: unless-stopped
+    mem_limit: 128m
+
+volumes:
+  pgdata:
+
+networks:
+  # БД видна только api — в общую сеть журнала обходов она не входит.
+  internal: {}
+  # Сеть проекта журнала обходов (compose-проект jirajura). Без неё
+  # `up -d` упадёт с «network jirajura_default declared as external, but
+  # could not be found» — журнал обходов должен быть уже запущен.
+  jirajura:
+    name: jirajura_default
+    external: true
