@@ -1,4 +1,5 @@
 """Люки САО — журнал самоконтроля: точка входа FastAPI."""
+import mimetypes
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -50,6 +51,12 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(districts.router, prefix="/api/districts", tags=["districts"])
 app.include_router(cards.router, prefix="/api/cards", tags=["cards"])
 app.include_router(summary.router, prefix="/api", tags=["summary"])
+
+# StaticFiles берёт Content-Type из mimetypes, а в образе python:3.12-slim
+# нет /etc/mime.types, и во встроенной таблице Python 3.12 нет .webp —
+# оригинал отдавался бы как application/octet-stream и скачивался бы
+# вместо показа.
+mimetypes.add_type("image/webp", ".webp")
 
 Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
