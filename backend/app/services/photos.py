@@ -28,6 +28,8 @@ except ImportError:  # pragma: no cover — зависит от сборки о�
 # того, кто откроет ссылку (тот же приём, что в JiraJura issues.py).
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "heic", "heif", "webp"}
 HEIF_EXTENSIONS = {"heic", "heif"}
+# Марки коробки ftyp (ISO BMFF), с которыми камеры пишут HEIF/HEIC.
+HEIF_BRANDS = {b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"hevm", b"hevs", b"mif1", b"mif2", b"msf1"}
 
 THUMBNAIL_SIZE = (480, 480)
 PREVIEW_SIZE = (2048, 2048)
@@ -55,6 +57,16 @@ def _extension(filename: str | None) -> str:
     if not filename or "." not in filename:
         return ""
     return filename.rsplit(".", 1)[-1].lower().strip()
+
+
+def _is_heif_container(path: Path) -> bool:
+    with open(path, "rb") as f:
+        head = f.read(64)
+    if len(head) < 16 or head[4:8] != b"ftyp":
+        return False
+    box_end = min(int.from_bytes(head[:4], "big"), len(head))
+    brands = [head[8:12]] + [head[i:i + 4] for i in range(16, box_end - 3, 4)]
+    return any(b in HEIF_BRANDS for b in brands)
 
 
 def _make_derivatives(abs_original: Path, ext: str, stem: str) -> tuple[str | None, str | None]:
@@ -116,10 +128,12 @@ async def save_photo(file: UploadFile, subdir: str) -> StoredPhoto:
     try:
         thumb_rel, preview_rel = await run_in_threadpool(_make_derivatives, abs_path, ext, stem)
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
-        if ext in HEIF_EXTENSIONS:
+        if ext in HEIF_EXTENSIONS and _is_heif_container(abs_path):
             # Редкие варианты HEIC с камер телефонов libheif может не
             # разобрать — фото всё равно нужно сохранить как доказательство,
-            # просто без превью (отдаём оригинал как есть).
+            # просто без превью (отдаём оригинал как есть). Но только если это
+            # действительно контейнер HEIF: иначе под именем .heic можно было
+            # бы хранить и раздавать с нашего домена любой файл.
             log.warning("HEIC без превью (%s): %s", rel_path, exc)
             return StoredPhoto(rel_path, None, None)
         abs_path.unlink(missing_ok=True)

@@ -42,6 +42,28 @@ async def test_non_image_with_jpg_extension_rejected(client, author):
     assert _uploaded_files() == before
 
 
+async def test_non_image_with_heic_extension_rejected(client, author):
+    card = await create_card(client, author)
+    before = _uploaded_files()
+    r = await upload(client, author, card["id"], "before", filename="fake.heic",
+                     content=b"<html><script>alert(1)</script></html>")
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Файл не распознан как фотография"
+    assert _uploaded_files() == before
+
+
+async def test_undecodable_heif_container_is_kept_without_preview(client, author):
+    # Настоящий контейнер HEIF, который libheif не разобрал, — всё равно
+    # доказательство с камеры: сохраняем оригинал без превью.
+    card = await create_card(client, author)
+    content = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic" + b"\x00" * 200
+    r = await upload(client, author, card["id"], "before", filename="IMG_0003.HEIC", content=content)
+    assert r.status_code == 201, r.text
+    photo = r.json()
+    assert photo["url"] == photo["thumbnail_url"] == photo["original_url"]
+    assert photo["original_url"].endswith(".heic")
+
+
 async def test_size_limit(client, author, monkeypatch):
     monkeypatch.setattr(settings, "MAX_PHOTO_SIZE_MB", 1)
     card = await create_card(client, author)
