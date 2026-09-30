@@ -82,7 +82,7 @@ async def save_photo(file: UploadFile, subdir: str) -> StoredPhoto:
     if not ext:
         ext = "jpg"
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(400, f"Недопустимый тип файла: .{ext}. Подойдут JPG, PNG, HEIC, WEBP")
+        raise HTTPException(400, f"Недопустимый тип файла: .{ext} — подойдут только фотографии")
 
     stem = uuid.uuid4().hex
     rel_path = f"{subdir}/{stem}.{ext}"
