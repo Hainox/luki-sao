@@ -1,6 +1,7 @@
 """Приём и хранение фотографий: проверка типа и размера, превью JPEG."""
 import logging
 import os
+import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,10 @@ HEIF_EXTENSIONS = {"heic", "heif"}
 THUMBNAIL_SIZE = (480, 480)
 PREVIEW_SIZE = (2048, 2048)
 
+# HEIC libheif декодирует только целиком: 48-Мп кадр даже без лишних копий
+# занимает ~350 МБ, и две параллельные загрузки упёрлись бы в mem_limit api.
+_DECODE_SLOT = threading.BoundedSemaphore(1)
+
 
 @dataclass
 class StoredPhoto:
@@ -53,27 +58,31 @@ def _extension(filename: str | None) -> str:
 
 
 def _make_derivatives(abs_original: Path, ext: str, stem: str) -> tuple[str | None, str | None]:
-    """Превью 480px для списков и, для HEIC, полноразмерный JPEG — его не
+    """Превью 480px для списков и, для HEIC, JPEG до 2048px — HEIC не
     показывает ни один браузер, кроме Safari. Возвращает относительные пути."""
     root = upload_root()
-    with Image.open(abs_original) as img:
+    heif = ext in HEIF_EXTENSIONS
+    with _DECODE_SLOT, Image.open(abs_original) as img:
+        # Сначала уменьшаем, потом поворачиваем по EXIF: thumbnail() декодирует
+        # JPEG сразу в уменьшенном масштабе, а exif_transpose/copy() делают
+        # полноразмерные копии — 48-Мп HEIC или 50-Мп JPEG с телефона занимали
+        # так ~650 МБ при mem_limit 512m у api. Рамки квадратные, поэтому
+        # поворот после уменьшения даёт тот же результат.
+        img.thumbnail(PREVIEW_SIZE if heif else THUMBNAIL_SIZE)
         img = ImageOps.exif_transpose(img)
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
 
         preview_rel = None
-        if ext in HEIF_EXTENSIONS:
-            preview = img.copy()
-            preview.thumbnail(PREVIEW_SIZE)
+        if heif:
             preview_rel = f"preview/{stem}.jpg"
             (root / "preview").mkdir(parents=True, exist_ok=True)
-            preview.save(root / preview_rel, "JPEG", quality=85)
+            img.save(root / preview_rel, "JPEG", quality=85)
+            img.thumbnail(THUMBNAIL_SIZE)
 
-        thumb = img.copy()
-        thumb.thumbnail(THUMBNAIL_SIZE)
         thumb_rel = f"thumbs/{stem}.jpg"
         (root / "thumbs").mkdir(parents=True, exist_ok=True)
-        thumb.save(root / thumb_rel, "JPEG", quality=80)
+        img.save(root / thumb_rel, "JPEG", quality=80)
     return thumb_rel, preview_rel
 
 

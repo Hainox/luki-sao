@@ -1,13 +1,16 @@
 """Загрузка фото: белый список расширений, размер, превью, раздача."""
 import io
 import os
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
 from app.config import settings
-from tests.conftest import create_card, image_bytes, login_as, upload
+from tests.conftest import BACKEND_DIR, create_card, image_bytes, login_as, upload
 
 
 def _uploaded_files() -> set[str]:
@@ -76,6 +79,30 @@ async def test_jpeg_gets_thumbnail_and_is_served_safely(client, author):
     detail = (await client.get(f"/api/cards/{card['id']}", headers=author)).json()
     assert detail["before_photo"]["id"] == photo["id"]
     assert detail["before_count"] == 1
+
+
+def test_large_rotated_photo_is_thumbnailed_without_full_size_copies(tmp_path):
+    # 24 Мп, портретная съёмка (поворот через EXIF) — обычное фото с телефона.
+    # Полноразмерная копия такого кадра — 72 МБ, а у api mem_limit 512m.
+    src = tmp_path / "big.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    Image.new("RGB", (6000, 4000), (90, 90, 90)).save(src, "JPEG", exif=exif)
+    code = textwrap.dedent(f"""
+        import resource
+        from pathlib import Path
+        from app.services import photos
+        start = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        photos._make_derivatives(Path({str(src)!r}), "jpg", "big")
+        print((resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - start) // 1024)
+    """)
+    out = subprocess.run(
+        [sys.executable, "-c", code], cwd=BACKEND_DIR, env={**os.environ, "UPLOAD_DIR": str(tmp_path)},
+        capture_output=True, text=True, check=True,
+    )
+    assert int(out.stdout.strip()) < 40
+    with Image.open(tmp_path / "thumbs" / "big.jpg") as thumb:
+        assert thumb.size == (320, 480)
 
 
 async def test_png_with_alpha_is_accepted(client, author):
