@@ -7,20 +7,12 @@ README.md и docs/DECISIONS.md, этот файл можно удалить.
 
 ## Где лежит код
 
-- Пока репозитория `Hainox/luki-sao` нет, код хранится в ветке
-  `claude/luki-sao-wip` репозитория `Hainox/JiraJura`. Ветка **не связана** с
-  историей JiraJura (orphan): в ней только это приложение, мержить её в
-  `main` JiraJura нельзя.
-- Перенос в собственный репозиторий: владелец продукта создаёт пустой
-  `Hainox/luki-sao` (без README) и даёт к нему доступ GitHub-приложению
-  Claude (https://claude.ai/connect-github). Затем:
-  ```bash
-  git clone --branch claude/luki-sao-wip --single-branch https://github.com/Hainox/JiraJura.git luki-sao
-  cd luki-sao
-  git remote set-url origin https://github.com/Hainox/luki-sao.git
-  git push -u origin HEAD:main
-  ```
-  После этого ветку `claude/luki-sao-wip` в JiraJura можно удалить.
+Репозиторий `Hainox/luki-sao` (создан владельцем продукта 30.09, лицензия
+MIT). Первоначально код хранился в orphan-ветке `claude/luki-sao-wip`
+репозитория JiraJura — её можно удалить. DNS `luki.obhod-sao.ru` →
+77.91.94.142 настроен 30.09. Документация: `README.md`,
+`deploy/README.md`, `docs/DECISIONS.md` — этот файл удалить после первого
+успешного запуска на проде.
 
 ## Продукт (утверждён владельцем продукта)
 
