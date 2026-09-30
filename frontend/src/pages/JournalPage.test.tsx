@@ -78,4 +78,13 @@ describe('JournalPage', () => {
     expect(screen.queryByRole('link', { name: /Зафиксировать нарушение/ })).not.toBeInTheDocument()
     expect(screen.getByText(/доступен только просмотр/)).toBeInTheDocument()
   })
+
+  it('инспектору без района журнал не показываем и не запрашиваем', async () => {
+    renderWithProviders(<JournalPage />, {
+      user: { ...districtUser, district_id: null, district_name: null, can_create_cards: false },
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('В журнале обходов вам не назначен район')
+    expect(screen.queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument()
+    expect(cardsApi.list).not.toHaveBeenCalled()
+  })
 })

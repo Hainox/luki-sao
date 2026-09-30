@@ -9,6 +9,7 @@ import { FILTERS } from '@/lib/filters'
 import { PeriodSelector } from '@/components/PeriodSelector'
 import { formatPercent } from '@/lib/format'
 import { periodReady, readPeriod, writePeriod } from '@/lib/period'
+import { hasNoJournal } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth'
 import type { FilterGroup, FilterCounts, User } from '@/types'
 
@@ -65,6 +66,7 @@ function CreateButton({ user }: { user: User }) {
 export default function JournalPage() {
   const user = useAuthStore((s) => s.user)!
   const [search, setSearch] = useSearchParams()
+  const noJournal = hasNoJournal(user)
   const pinnedDistrict = !user.is_prefecture && user.district_id ? user.district_id : null
   const districtId = pinnedDistrict ?? search.get('district') ?? ''
   const rawFilter = search.get('filter') as FilterGroup | null
@@ -80,7 +82,7 @@ export default function JournalPage() {
   const { data: districts = [] } = useQuery({
     queryKey: ['districts'],
     queryFn: districtsApi.list,
-    enabled: !pinnedDistrict,
+    enabled: !pinnedDistrict && !noJournal,
     staleTime: 10 * 60_000,
   })
 
@@ -90,7 +92,7 @@ export default function JournalPage() {
     queryFn: ({ pageParam }) => cardsApi.list({ ...params, page: pageParam }),
     initialPageParam: 1,
     getNextPageParam: (last) => (last.page * last.page_size < last.total ? last.page + 1 : undefined),
-    enabled: periodReady(period),
+    enabled: periodReady(period) && !noJournal,
   })
 
   const first = query.data?.pages[0]
@@ -98,6 +100,18 @@ export default function JournalPage() {
   const districtName = pinnedDistrict
     ? (user.district_name ?? '—')
     : (districts.find((d) => d.id === districtId)?.name ?? 'Все районы')
+
+  if (noJournal) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Фотожурнал</h1>
+        <div role="alert" className="card p-6 text-slate-700">
+          В журнале обходов вам не назначен район — фотожурнал недоступен. Обратитесь к администратору журнала
+          обходов. Свод по люкам открыт в разделе «Свод».
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">

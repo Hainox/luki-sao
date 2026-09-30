@@ -4,8 +4,11 @@
   admin                → префектура: видит всё, принимает/возвращает, может
                           создать карточку в любом районе;
   inspector / reviewer → сотрудник района: журнал и действия только в своём
-                          районе. Без района (у проверяющего округа) —
+                          районе. Проверяющий без района (проверяющий округа) —
                           просмотр всего округа, но без создания и исправления.
+                          Инспектор без района журнала не видит вовсе: в
+                          журнале обходов это незавершённая настройка
+                          аккаунта, и тот отдаёт ему пустой список районов.
 Свод по люкам открыт всем вошедшим.
 """
 from uuid import UUID
@@ -20,25 +23,30 @@ NO_DISTRICT_MESSAGE = (
 )
 
 
-def journal_scope(user: User) -> UUID | None:
-    """Район, которым ограничен журнал пользователя; None — весь округ."""
-    if user.is_prefecture:
-        return None
-    return user.district_id
+NO_DISTRICT_JOURNAL_MESSAGE = (
+    "В журнале обходов вам не назначен район — журнал недоступен. "
+    "Обратитесь к администратору журнала обходов."
+)
+
+
+def sees_whole_okrug(user: User) -> bool:
+    return user.is_prefecture or (user.role == "reviewer" and user.district_id is None)
 
 
 def resolve_district_filter(user: User, requested: UUID | None) -> UUID | None:
-    scope = journal_scope(user)
-    if scope is None:
+    if sees_whole_okrug(user):
         return requested
-    if requested is not None and requested != scope:
+    if user.district_id is None:
+        raise HTTPException(403, NO_DISTRICT_JOURNAL_MESSAGE)
+    if requested is not None and requested != user.district_id:
         raise HTTPException(403, "Журнал другого района вам недоступен")
-    return scope
+    return user.district_id
 
 
 def can_view(user: User, card: Card) -> bool:
-    scope = journal_scope(user)
-    return scope is None or card.district_id == scope
+    if sees_whole_okrug(user):
+        return True
+    return user.district_id is not None and card.district_id == user.district_id
 
 
 def can_create(user: User) -> bool:

@@ -102,6 +102,26 @@ async def test_reviewer_without_district_reads_okrug_but_cannot_act(client, jj, 
     assert detail["permissions"] == {"can_add_before": False, "can_add_after": False, "can_review": False}
 
 
+async def test_inspector_without_district_sees_no_journal(client, jj, admin):
+    # Журнал обходов отдаёт инспектору без района пустой список районов —
+    # это незавершённая настройка аккаунта, а не «проверяющий округа».
+    aero = await login_as(client, jj, "inspector1", district="Аэропорт")
+    card = await create_card(client, aero)
+    orphan = await login_as(client, jj, "orphan", role="inspector", district=None)
+
+    r = await client.get("/api/cards", headers=orphan)
+    assert r.status_code == 403
+    assert "не назначен район" in r.json()["detail"]
+    r = await client.get("/api/cards", params={"district_id": DISTRICT_IDS["Аэропорт"]}, headers=orphan)
+    assert r.status_code == 403
+    assert (await client.get(f"/api/cards/{card['id']}", headers=orphan)).status_code == 403
+    assert (await upload(client, orphan, card["id"], "after")).status_code == 403
+    r = await client.post("/api/cards", json={"address": "ул. Зорге, 1"}, headers=orphan)
+    assert r.status_code == 403
+    # Свод по люкам открыт всем вошедшим.
+    assert (await client.get("/api/summary", headers=orphan)).status_code == 200
+
+
 async def test_cards_require_login(client):
     assert (await client.get("/api/cards")).status_code == 401
     assert (await client.post("/api/cards", json={"address": "ул. Зорге, 1"})).status_code == 401
