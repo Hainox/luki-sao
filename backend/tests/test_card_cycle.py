@@ -1,4 +1,6 @@
 """Полный цикл карточки: ДО → ПОСЛЕ → проверка → возврат → новое ПОСЛЕ → приёмка."""
+import asyncio
+
 from tests.conftest import DISTRICT_IDS, create_card, login_as, run_sql, upload
 
 
@@ -156,3 +158,26 @@ async def test_coordinates_are_rounded_and_paired(client, jj):
     assert r.status_code == 422
     r = await client.post("/api/cards", json={"address": "ул. Зорге, 1", "lat": 95, "lon": 37}, headers=inspector)
     assert r.status_code == 422
+
+
+async def test_parallel_first_after_photos_make_one_attempt(client, jj, admin):
+    # Двойное нажатие / два телефона одновременно: обе фотографии попадают в
+    # одну попытку, на проверку карточка уходит один раз.
+    inspector = await login_as(client, jj, "inspector1")
+    colleague = await login_as(client, jj, "inspector2")
+    card = await create_card(client, inspector)
+    for _ in range(3):
+        results = await asyncio.gather(
+            upload(client, inspector, card["id"], "after"),
+            upload(client, colleague, card["id"], "after"),
+        )
+        assert [r.status_code for r in results] == [201, 201]
+        detail = (await client.get(f"/api/cards/{card['id']}", headers=admin)).json()
+        assert detail["status"] == "on_review"
+        assert {r.json()["attempt"] for r in results} == {detail["current_attempt"]}
+        assert detail["after_count"] == 2
+        r = await client.post(f"/api/cards/{card['id']}/return", json={"comment": "Ещё раз"}, headers=admin)
+        assert r.status_code == 200
+    kinds = [(e["kind"], e["attempt"]) for e in detail["events"] if e["kind"] == "after_uploaded"]
+    assert kinds == [("after_uploaded", 1), ("after_uploaded", 2), ("after_uploaded", 3)]
+
