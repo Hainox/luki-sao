@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ReviewPage from '@/pages/ReviewPage'
-import { cardsApi } from '@/lib/api'
+import { ApiError, cardsApi } from '@/lib/api'
 import { cardDetail, photo, prefectureUser, renderWithProviders } from '@/test/utils'
 import type { CardDetail } from '@/types'
 
@@ -48,6 +48,24 @@ describe('ReviewPage', () => {
     expect(cardsApi.accept).toHaveBeenCalledWith('c1')
     expect(await screen.findByRole('heading', { name: 'ОЛХ-002' })).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('В очереди: 1')).toBeInTheDocument())
+  })
+
+  it('решение уже вынес другой сотрудник префектуры — очередь обновляется', async () => {
+    const user = userEvent.setup()
+    const first = onReview('c1', 'ОЛХ-001')
+    const second = onReview('c2', 'ОЛХ-002')
+    vi.mocked(cardsApi.reviewQueue)
+      .mockResolvedValueOnce({ items: [first, second], total: 2 })
+      .mockResolvedValue({ items: [second], total: 1 })
+    vi.mocked(cardsApi.accept).mockRejectedValue(
+      new ApiError('HTTP 409', {
+        response: { status: 409, data: { detail: 'Карточка не на проверке — возможно, решение уже принято' } },
+      }),
+    )
+    renderWithProviders(<ReviewPage />, { route: '/review', user: prefectureUser })
+
+    await user.click(await screen.findByRole('button', { name: 'Принять' }))
+    expect(await screen.findByRole('heading', { name: 'ОЛХ-002' })).toBeInTheDocument()
   })
 
   it('вернуть на доработку можно только с комментарием', async () => {

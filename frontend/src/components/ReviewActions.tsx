@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, RotateCcw, X } from 'lucide-react'
-import { cardsApi, describeError } from '@/lib/api'
+import { ApiError, cardsApi, describeError } from '@/lib/api'
 import { invalidateCardQueries } from '@/lib/queries'
 import { notify } from '@/lib/toast'
 import type { CardDetail } from '@/types'
@@ -24,15 +24,22 @@ export function ReviewActions({ card, onDecided }: Props) {
     onDecided?.()
   }
 
+  const failed = (err: unknown, fallback: string) => {
+    notify.error(describeError(err, fallback))
+    // 409 — решение уже вынес другой сотрудник префектуры: без обновления
+    // устаревшая карточка так и висела бы с кнопками.
+    if (err instanceof ApiError && err.response?.status === 409) invalidateCardQueries(queryClient, card.id)
+  }
+
   const accept = useMutation({
     mutationFn: () => cardsApi.accept(card.id),
     onSuccess: () => done(`${card.label} принята`),
-    onError: (err) => notify.error(describeError(err, 'Не удалось принять карточку')),
+    onError: (err) => failed(err, 'Не удалось принять карточку'),
   })
   const giveBack = useMutation({
     mutationFn: () => cardsApi.returnForRework(card.id, comment.trim()),
     onSuccess: () => done(`${card.label} возвращена на доработку`),
-    onError: (err) => notify.error(describeError(err, 'Не удалось вернуть карточку')),
+    onError: (err) => failed(err, 'Не удалось вернуть карточку'),
   })
   const busy = accept.isPending || giveBack.isPending
 
