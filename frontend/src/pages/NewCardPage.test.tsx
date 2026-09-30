@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import NewCardPage from '@/pages/NewCardPage'
-import { cardsApi, districtsApi } from '@/lib/api'
+import { ApiError, cardsApi, districtsApi } from '@/lib/api'
 import { cardDetail, districtUser, prefectureUser, renderWithProviders } from '@/test/utils'
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -74,6 +74,7 @@ describe('NewCardPage', () => {
 
     await waitFor(() => expect(screen.getByText('Карточка открыта')).toBeInTheDocument())
     expect(cardsApi.create).toHaveBeenCalledWith({
+      id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
       address: 'ул. Усиевича, 10',
       district_id: undefined,
       comment: 'Провал крышки',
@@ -81,6 +82,28 @@ describe('NewCardPage', () => {
       lon: undefined,
     })
     expect(cardsApi.uploadPhoto).toHaveBeenCalledWith('card-9', 'before', file)
+  })
+
+  it('повтор после потерянного ответа уходит с тем же id — вторая карточка не появится', async () => {
+    const user = userEvent.setup()
+    const created = cardDetail({ id: 'card-9', label: 'ОЛХ-009' })
+    vi.mocked(cardsApi.create)
+      .mockRejectedValueOnce(new ApiError('timeout', { code: 'ECONNABORTED' }))
+      .mockResolvedValueOnce(created)
+    vi.mocked(cardsApi.uploadPhoto).mockResolvedValue(created.photos[0])
+    renderPage()
+
+    await user.upload(screen.getByTestId('camera-input'), jpeg())
+    await user.type(screen.getByLabelText('Адрес'), 'ул. Усиевича, 10')
+    await user.click(submitButton())
+    await waitFor(() => expect(submitButton()).toBeEnabled())
+    await user.click(submitButton())
+
+    await waitFor(() => expect(screen.getByText('Карточка открыта')).toBeInTheDocument())
+    const ids = vi.mocked(cardsApi.create).mock.calls.map(([body]) => body.id)
+    expect(ids).toHaveLength(2)
+    expect(ids[0]).toBeTruthy()
+    expect(ids[1]).toBe(ids[0])
   })
 
   it('не принимает файлы, которые не являются фотографиями', async () => {

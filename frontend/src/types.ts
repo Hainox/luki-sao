@@ -138,6 +138,7 @@ export interface PeriodParams {
 }
 
 export interface CardCreate {
+  id: string
   district_id?: string
   address: string
   lat?: number

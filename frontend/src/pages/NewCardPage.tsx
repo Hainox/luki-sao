@@ -5,7 +5,7 @@ import { ArrowLeft, Camera, ImagePlus, LocateFixed, RotateCcw, Trash2, X } from 
 import { cardsApi, describeError, districtsApi, isRetryable } from '@/lib/api'
 import { MAX_PHOTOS, PHOTO_ACCEPT, photoProblem, uploadWithRetry } from '@/lib/photoUpload'
 import { invalidateCardQueries } from '@/lib/queries'
-import { submitBlocker } from '@/lib/newCard'
+import { newCardId, submitBlocker } from '@/lib/newCard'
 import { notify } from '@/lib/toast'
 import { useAuthStore } from '@/stores/auth'
 import type { CardDetail } from '@/types'
@@ -56,6 +56,9 @@ export default function NewCardPage() {
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
 
+  // Повтор «Зафиксировать» после потерянного ответа уходит с тем же id —
+  // сервер вернёт уже созданную карточку, а не заведёт вторую.
+  const [cardId] = useState(newCardId)
   const [photos, setPhotos] = useState<File[]>([])
   const [address, setAddress] = useState('')
   const [districtId, setDistrictId] = useState(user.is_prefecture ? '' : (user.district_id ?? ''))
@@ -148,6 +151,7 @@ export default function NewCardPage() {
     let card: CardDetail
     try {
       card = await cardsApi.create({
+        id: cardId,
         address: address.trim(),
         district_id: user.is_prefecture ? districtId : undefined,
         comment: comment.trim() || undefined,

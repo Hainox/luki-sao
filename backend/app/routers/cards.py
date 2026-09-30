@@ -224,6 +224,13 @@ async def create_card(
     if district is None or district.name == UNKNOWN_DISTRICT_NAME:
         raise HTTPException(422, "Район не найден — войдите заново, чтобы обновить список районов")
 
+    if data.id is not None:
+        existing = await db.get(Card, data.id)
+        if existing is not None:
+            if existing.created_by != user.id:
+                raise HTTPException(409, "Карточка с таким идентификатором уже создана другим сотрудником")
+            return _detail(await _load_full(db, existing.id), user)
+
     card = Card(
         district_id=district_id,
         address=data.address,
@@ -232,6 +239,8 @@ async def create_card(
         comment=data.comment,
         created_by=user.id,
     )
+    if data.id is not None:
+        card.id = data.id
     db.add(card)
     await db.flush()
     await db.refresh(card)

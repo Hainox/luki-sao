@@ -44,6 +44,9 @@ FilterGroup = Literal["all", "open", "on_review", "accepted"]
 
 
 class CardCreate(BaseModel):
+    # Клиент придумывает id один раз на форму: повторное «Зафиксировать»
+    # после потерянного ответа возвращает ту же карточку, а не создаёт вторую.
+    id: UUID | None = None
     district_id: UUID | None = None
     address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)]
     lat: Decimal | None = Field(default=None, ge=-90, le=90, max_digits=9, decimal_places=6)

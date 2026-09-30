@@ -1,5 +1,6 @@
 """Полный цикл карточки: ДО → ПОСЛЕ → проверка → возврат → новое ПОСЛЕ → приёмка."""
 import asyncio
+import uuid
 
 from tests.conftest import DISTRICT_IDS, create_card, login_as, run_sql, upload
 
@@ -216,3 +217,21 @@ async def test_decision_during_upload_rejects_stale_after_photo(client, jj, admi
     # Новое фото, снятое уже после возврата, открывает попытку 2 как обычно.
     r = await upload(client, inspector, card["id"], "after")
     assert r.status_code == 201 and r.json()["attempt"] == 2
+
+
+async def test_repeated_create_with_same_id_does_not_duplicate_card(client, jj):
+    # Ответ на «Зафиксировать» потерялся по мобильной связи, сотрудник жмёт
+    # ещё раз: вторая карточка навсегда завысила бы «Выявлено» (удаления нет).
+    inspector = await login_as(client, jj, "inspector1")
+    colleague = await login_as(client, jj, "inspector2")
+    card_id = str(uuid.uuid4())
+    first = await create_card(client, inspector, id=card_id)
+    again = await create_card(client, inspector, id=card_id)
+    assert first["id"] == again["id"] == card_id
+    assert first["label"] == again["label"]
+    assert [e["kind"] for e in again["events"]] == ["created"]
+    assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1
+
+    r = await client.post("/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague)
+    assert r.status_code == 409
+    assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1
