@@ -1,0 +1,34 @@
+# === Python (backend) ===
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.env
+.env.*
+!.env.example
+
+# === Node / Vite (frontend) ===
+node_modules/
+dist/
+dev-dist/
+*.local
+npm-debug.log*
+
+# === Загруженные фото и бэкапы: пользовательские данные, не исходники ===
+# ** — чтобы игнорировались файлы на любой глубине (uploads/before/…),
+# а не только первый уровень.
+data/**
+!data/**/
+!data/**/.gitkeep
+backend/uploads/**
+!backend/uploads/.gitkeep
+/backups/
+*.sql.gz
+
+# === Editor / OS ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.sw?
