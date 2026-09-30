@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --color-brand-50: #eef3ff;
+  --color-brand-100: #dce6ff;
+  --color-brand-200: #b9ccff;
+  --color-brand-500: #3b6cf0;
+  --color-brand-600: #1e4fd8;
+  --color-brand-700: #1440b8;
+  --color-brand-800: #103596;
+  --color-brand-900: #0c2870;
+  --color-page: #f4f6fb;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-page);
+  color: #0f172a;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* @utility, а не @layer components: в Tailwind v4 @apply видит только
+   классы, объявленные через @utility. */
+@utility btn {
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-semibold
+    transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2
+    focus-visible:outline-offset-2 focus-visible:outline-brand-600;
+}
+@utility btn-primary {
+  @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+}
+@utility btn-secondary {
+  @apply btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50;
+}
+@utility btn-success {
+  @apply btn bg-emerald-600 text-white hover:bg-emerald-700;
+}
+@utility btn-warning {
+  @apply btn bg-orange-500 text-white hover:bg-orange-600;
+}
+@utility card {
+  @apply rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)];
+}
+@utility field {
+  @apply block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900
+    outline-none placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-200;
+}
+@utility label {
+  @apply mb-1.5 block text-sm font-semibold text-slate-700;
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
