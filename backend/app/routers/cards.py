@@ -192,6 +192,14 @@ def _check_upload(user: User, card: Card, kind: str, before_count: int, latest_a
         raise HTTPException(409, f"За одну попытку можно приложить не больше {limit} фото ПОСЛЕ")
 
 
+def _after_attempt(card: Card) -> int:
+    """Попытка, в которую ляжет фото ПОСЛЕ: новая, если карточка ждёт
+    исправления, иначе текущая (карточка на проверке)."""
+    if card.status in ("detected", "returned"):
+        return card.current_attempt + 1
+    return card.current_attempt
+
+
 # ── Эндпоинты ───────────────────────────────────────────────────
 
 @router.post("", response_model=CardDetail, status_code=201)
@@ -335,6 +343,7 @@ async def upload_photo(
 ):
     card = await _get_visible(db, card_id, user)
     _check_upload(user, card, kind, *await _photo_counts(db, card))
+    intended_attempt = _after_attempt(card)
     # Закрываем читающую транзакцию до приёма файла: загрузка по мобильной
     # связи идёт десятки секунд, соединение с БД не должно всё это время
     # висеть «idle in transaction».
@@ -350,6 +359,15 @@ async def upload_photo(
         _check_upload(user, card, kind, *await _photo_counts(db, card))
         attempt = 0
         if kind == "after":
+            # Фото ПОСЛЕ уходят по одному, а карточка попадает в очередь
+            # проверки уже после первого: если префектура вернула её, пока
+            # грузилось следующее, это фото снято к отклонённой попытке и не
+            # должно молча открыть новую. Параллельная загрузка в ту же
+            # попытку сюда не попадает — у неё попытка та же.
+            if _after_attempt(card) != intended_attempt:
+                raise HTTPException(
+                    409, "Пока фото загружалось, префектура уже вынесла решение по карточке — откройте её заново",
+                )
             if card.status in ("detected", "returned"):
                 card.current_attempt += 1
                 card.status = "on_review"

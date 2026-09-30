@@ -181,3 +181,38 @@ async def test_parallel_first_after_photos_make_one_attempt(client, jj, admin):
     kinds = [(e["kind"], e["attempt"]) for e in detail["events"] if e["kind"] == "after_uploaded"]
     assert kinds == [("after_uploaded", 1), ("after_uploaded", 2), ("after_uploaded", 3)]
 
+
+
+async def test_decision_during_upload_rejects_stale_after_photo(client, jj, admin, monkeypatch):
+    # Фото ПОСЛЕ уходят по одному по медленной связи, а карточка попадает в
+    # очередь префектуры уже после первого. Если префектура вернула её, пока
+    # грузилось второе, это фото снято к отклонённой попытке — оно не должно
+    # молча открыть новую попытку и снова отправить карточку на проверку.
+    from app.routers import cards as cards_router
+
+    inspector = await login_as(client, jj, "inspector1")
+    card = await create_card(client, inspector)
+    assert (await upload(client, inspector, card["id"], "after")).status_code == 201
+
+    real_save = cards_router.save_photo
+
+    async def save_while_prefecture_returns(file, kind):
+        stored = await real_save(file, kind)
+        r = await client.post(f"/api/cards/{card['id']}/return", json={"comment": "Не видно крышку"},
+                              headers=admin)
+        assert r.status_code == 200
+        return stored
+
+    monkeypatch.setattr(cards_router, "save_photo", save_while_prefecture_returns)
+    r = await upload(client, inspector, card["id"], "after")
+    assert r.status_code == 409
+    assert "решение" in r.json()["detail"]
+    monkeypatch.setattr(cards_router, "save_photo", real_save)
+
+    detail = (await client.get(f"/api/cards/{card['id']}", headers=inspector)).json()
+    assert (detail["status"], detail["current_attempt"]) == ("returned", 1)
+    assert [(p["kind"], p["attempt"]) for p in detail["photos"]] == [("after", 1)]
+
+    # Новое фото, снятое уже после возврата, открывает попытку 2 как обычно.
+    r = await upload(client, inspector, card["id"], "after")
+    assert r.status_code == 201 and r.json()["attempt"] == 2

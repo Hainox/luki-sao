@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Camera, ImagePlus, RotateCcw } from 'lucide-react'
-import { cardsApi, describeError, isRetryable } from '@/lib/api'
+import { ApiError, cardsApi, describeError, isRetryable } from '@/lib/api'
 import { PHOTO_ACCEPT, photoProblem, uploadWithRetry } from '@/lib/photoUpload'
 import { notify } from '@/lib/toast'
 import { invalidateCardQueries } from '@/lib/queries'
@@ -29,6 +29,7 @@ export function AddPhotoButton({ cardId, kind, label, remaining, withGallery = f
 
   const send = async (files: File[]) => {
     let sent = 0
+    let conflict = false
     const stuck: File[] = []
     for (const [i, file] of files.entries()) {
       setProgress(files.length > 1 ? `Отправляем ${i + 1} из ${files.length}…` : 'Отправляем…')
@@ -38,15 +39,20 @@ export function AddPhotoButton({ cardId, kind, label, remaining, withGallery = f
       } catch (err) {
         notify.error(describeError(err, 'Фото не отправилось'))
         if (isRetryable(err)) stuck.push(file)
+        // 409 — карточка изменилась (решение префектуры, лимит фото).
+        // Остальные фото пачки сняты к прежнему состоянию: после возврата
+        // на доработку они молча открыли бы новую попытку.
+        conflict = err instanceof ApiError && err.response?.status === 409
+        if (conflict) break
       }
     }
     setProgress(null)
     setFailed(stuck)
     if (sent > 0) {
       notify.success(kind === 'after' ? 'Фото ПОСЛЕ добавлено — карточка на проверке у префектуры' : 'Фото ДО добавлено')
-      invalidateCardQueries(queryClient, cardId)
       onUploaded?.()
     }
+    if (sent > 0 || conflict) invalidateCardQueries(queryClient, cardId)
   }
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
