@@ -338,7 +338,8 @@ async def test_oldest_open_ignores_period_and_keeps_ten_oldest(client, jj, admin
     oldest = data["oldest_open"]
     assert [c["id"] for c in oldest] == [c["id"] for c in open_cards[:10]]
     assert oldest[0]["label"] == open_cards[0]["label"]
-    assert oldest[0]["address"] == "ул. Усиевича, д. 1"
+    assert oldest[0]["address"] == "Двор района Аэропорт — ул. Усиевича, д. 1"
+    assert oldest[0]["place_kind"] == "dt"
     assert oldest[0]["status"] == "detected"
     assert oldest[1]["status"] == "returned"
     today = msk_today()
@@ -392,7 +393,7 @@ async def test_district_xlsx(client, jj, admin):
     assert rows[oldest] == ["Карточка", "Адрес", "Статус", "Выявлено", "Ждёт, дней"]
     assert rows[oldest + 1] == [
         waiting["label"],
-        "ул. Зорге, д. 1",
+        "ДТ · Двор района Аэропорт — ул. Зорге, д. 1",
         "Выявлено",
         msk_today().strftime("%d.%m.%Y"),
         0,
@@ -424,7 +425,13 @@ async def test_district_xlsx_empty_and_formula_injection_safe(client, jj, admin)
     assert "Неисправленных карточек нет" in first
 
     aero = await login_as(client, jj, "inspector1", district="Аэропорт")
-    await create_card(client, aero, address='=HYPERLINK("http://evil.test","x")')
+    # Новые карточки начинаются с названия объекта справочника, а у карточек,
+    # заведённых до него, адрес — свободный текст сотрудника.
+    legacy = await create_card(client, aero)
+    run_sql(
+        "UPDATE cards SET address = %s, place_kind = NULL, territory_id = NULL WHERE id = %s",
+        ('=HYPERLINK("http://evil.test","x")', legacy["id"]),
+    )
     r = await client.get("/api/summary/district.xlsx", headers=aero)
     assert r.status_code == 200
     ws = load_workbook(BytesIO(r.content)).active

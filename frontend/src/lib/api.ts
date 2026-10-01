@@ -7,11 +7,13 @@ import type {
   DistrictSummaryParams,
   FilterGroup,
   LoginResponse,
-  PeriodParams,
+  NearbyTerritory,
   Photo,
   PhotoKind,
   ReviewQueue,
   Summary,
+  SummaryParams,
+  Territory,
   User,
 } from '@/types'
 import { TOKEN_KEY, useAuthStore, waitForRelogin } from '@/stores/auth'
@@ -184,7 +186,7 @@ export const districtsApi = {
   list: () => request<District[]>('GET', '/districts'),
 }
 
-export interface CardListParams extends PeriodParams {
+export interface CardListParams extends SummaryParams {
   district_id?: string
   filter?: FilterGroup
   page?: number
@@ -209,10 +211,20 @@ export const cardsApi = {
     request<CardDetail>('POST', `/cards/${id}/return`, { comment }),
 }
 
+export const territoriesApi = {
+  /** Все ДТ и ОДХ района: префектура передаёт район, сотруднику сервер берёт его район. */
+  list: (districtId?: string) =>
+    request<Territory[]>('GET', '/territories', undefined, { params: { district_id: districtId || undefined } }),
+  nearby: (lat: number, lon: number, districtId?: string) =>
+    request<NearbyTerritory[]>('GET', '/territories/nearby', undefined, {
+      params: { lat, lon, district_id: districtId || undefined },
+    }),
+}
+
 export const summaryApi = {
   /** Таблица по всем районам — только префектуре. */
-  get: (params: PeriodParams) => request<Summary>('GET', '/summary', undefined, { params: { ...params } }),
-  xlsx: (params: PeriodParams) =>
+  get: (params: SummaryParams) => request<Summary>('GET', '/summary', undefined, { params: { ...params } }),
+  xlsx: (params: SummaryParams) =>
     request<Blob>('GET', '/summary.xlsx', undefined, { params: { ...params }, responseType: 'blob' }),
   district: (params: DistrictSummaryParams) =>
     request<DistrictSummary>('GET', '/summary/district', undefined, { params: { ...params } }),

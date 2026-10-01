@@ -13,7 +13,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.models import UNKNOWN_DISTRICT_NAME, Card, CardEvent, CardPhoto, District, User
+from app.models import UNKNOWN_DISTRICT_NAME, Card, CardEvent, CardPhoto, District, Territory, User
 from app.schemas import (
     CardCreate,
     CardDetail,
@@ -26,8 +26,11 @@ from app.schemas import (
     PeriodOut,
     PersonOut,
     PhotoOut,
+    PlaceFilter,
+    PlaceKind,
     ReturnRequest,
     ReviewQueueOut,
+    TerritoryOut,
 )
 from app.services import access
 from app.services.audit import log_action
@@ -35,6 +38,7 @@ from app.services.formatting import card_label
 from app.services.periods import Period, resolve_period
 from app.services.photos import delete_stored, public_url, save_photo
 from app.services.security import client_ip, get_current_user, require_prefecture
+from app.services.territories import card_address, territory_for_card
 
 router = APIRouter()
 
@@ -51,6 +55,7 @@ REVIEW_QUEUE_LIMIT = 50
 
 _CARD_OPTIONS = (
     joinedload(Card.district),
+    joinedload(Card.territory),
     joinedload(Card.creator),
     selectinload(Card.photos).joinedload(CardPhoto.uploader),
     selectinload(Card.events).joinedload(CardEvent.user),
@@ -62,6 +67,19 @@ _CARD_OPTIONS = (
 
 def _person(user: User) -> PersonOut:
     return PersonOut(id=user.id, full_name=user.full_name or user.login, login=user.login)
+
+
+def _territory_out(t: Territory | None) -> TerritoryOut | None:
+    if t is None:
+        return None
+    return TerritoryOut(
+        id=t.id,
+        kind=cast(PlaceKind, t.kind),
+        name=t.name,
+        owner=t.owner,
+        category=t.category,
+        passport_url=t.passport_url,
+    )
 
 
 def _photo_out(photo: CardPhoto) -> PhotoOut:
@@ -125,6 +143,8 @@ def _list_item_fields(
         "district_id": card.district_id,
         "district_name": card.district.name,
         "address": card.address,
+        "place_kind": card.place_kind,
+        "territory": _territory_out(card.territory),
         "status": card.status,
         "current_attempt": card.current_attempt,
         "created_at": card.created_at,
@@ -283,20 +303,7 @@ async def create_card(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not access.can_create(user):
-        raise HTTPException(403, access.NO_DISTRICT_MESSAGE)
-    district_id: UUID
-    if user.is_prefecture:
-        if data.district_id is None:
-            raise HTTPException(422, "Выберите район")
-        district_id = data.district_id
-    else:
-        if data.district_id is not None and data.district_id != user.district_id:
-            raise HTTPException(403, "Фиксировать нарушения можно только в своём районе")
-        if user.district_id is None:
-            raise HTTPException(403, access.NO_DISTRICT_MESSAGE)
-        district_id = user.district_id
-
+    district_id = access.resolve_work_district(user, data.district_id)
     district = await db.get(District, district_id)
     if district is None or district.name == UNKNOWN_DISTRICT_NAME:
         raise HTTPException(422, "Район не найден — войдите заново, чтобы обновить список районов")
@@ -306,9 +313,13 @@ async def create_card(
         if existing is not None:
             return await _repeated_create(db, existing, user)
 
+    territory = await territory_for_card(db, data.territory_id, data.place_kind, district)
     card = Card(
         district_id=district_id,
-        address=data.address,
+        address=card_address(territory, data.address_note),
+        place_kind=territory.kind,
+        territory_id=territory.id,
+        address_note=data.address_note,
         lat=data.lat,
         lon=data.lon,
         comment=data.comment,
@@ -336,7 +347,12 @@ async def create_card(
         "card_create",
         "card",
         card.id,
-        {"number": card.number, "district_id": str(district_id)},
+        {
+            "number": card.number,
+            "district_id": str(district_id),
+            "place_kind": territory.kind,
+            "territory_id": str(territory.id),
+        },
         client_ip(request),
     )
     await db.commit()
@@ -352,6 +368,7 @@ async def list_cards(
     date_from: date | None = None,
     date_to: date | None = None,
     filter_group: FilterGroup = Query("all", alias="filter"),
+    place: PlaceFilter = "all",
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -367,6 +384,8 @@ async def list_cards(
         conds.append(Card.created_at >= start)
     if end is not None:
         conds.append(Card.created_at < end)
+    if place != "all":
+        conds.append(Card.place_kind == place)
 
     status_rows = (
         await db.execute(select(Card.status, func.count()).where(*conds).group_by(Card.status))

@@ -88,6 +88,9 @@ git pull --ff-only
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 Фото (`data/uploads`) и БД (том `pgdata`) при пересборке не трогаются.
+Справочник ДТ/ОДХ API загружает сам при старте, если файл в репозитории
+поменялся: в логе `docker compose -f docker-compose.prod.yml logs luki-api`
+строка «Справочник ДТ/ОДХ загружен…» или «…не менялся».
 
 ## 4. Бэкапы
 

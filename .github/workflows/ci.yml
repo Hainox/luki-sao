@@ -100,12 +100,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Vulnerabilities in built images (trivy)
-        uses: aquasecurity/trivy-action@0.33.1
+        # Тега 0.33.1 (без «v») больше нет, а v0.33.1 ставит trivy v0.65.0,
+        # которого тоже уже нет в релизах. Закреплено за коммитом тега, чтобы
+        # подмена тега не прошла незамеченной.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: .
           severity: HIGH,CRITICAL
           exit-code: '1'
+          trivyignores: .trivyignore.yaml
 
   deploy-config:
     runs-on: ubuntu-latest

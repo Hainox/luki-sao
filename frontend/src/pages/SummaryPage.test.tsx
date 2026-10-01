@@ -22,6 +22,7 @@ function row(id: string | null, name: string, detected: number, fixed: number, o
 
 const summary: Summary = {
   period: { kind: 'all', date_from: null, date_to: null, label: 'За всё время' },
+  place: 'all',
   rows: [row('d-aero', 'Аэропорт', 3, 2, 1), row('d-kopt', 'Коптево', 0, 0, 0), row('d-sokol', 'Сокол', 10, 7, 0)],
   total: row(null, 'Итого по САО', 13, 9, 1),
 }
@@ -29,6 +30,7 @@ const summary: Summary = {
 const districtSummary: DistrictSummary = {
   district: { id: 'd-aero', name: 'Аэропорт' },
   period: { kind: 'all', date_from: null, date_to: null, label: 'За всё время' },
+  place: 'all',
   totals: {
     detected: 3,
     accepted: 2,
@@ -43,6 +45,8 @@ const districtSummary: DistrictSummary = {
   dynamics: [],
   oldest_open: [],
 }
+
+vi.mock('@/lib/download', () => ({ saveBlob: vi.fn() }))
 
 function renderSummary(route: string, user: User) {
   return renderWithProviders(
@@ -92,6 +96,22 @@ describe('SummaryPage', () => {
     await user.click(screen.getByRole('button', { name: 'Неделя' }))
     expect(summaryApi.get).toHaveBeenLastCalledWith({ period: 'week' })
     expect(screen.getByRole('button', { name: 'Неделя' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('«Где найдены: ОДХ» пересчитывает свод, Excel и ссылку на район', async () => {
+    const user = userEvent.setup()
+    const { saveBlob } = await import('@/lib/download')
+    vi.mocked(summaryApi.xlsx).mockResolvedValue(new Blob(['x']))
+    renderSummary('/summary', prefectureUser)
+    await screen.findByRole('table')
+
+    await user.click(screen.getByRole('button', { name: 'ОДХ' }))
+    expect(summaryApi.get).toHaveBeenLastCalledWith({ period: 'all', place: 'odh' })
+    await user.click(screen.getByRole('button', { name: 'Скачать Excel' }))
+    await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), 'Свод по люкам САО (ОДХ).xlsx'))
+    expect(summaryApi.xlsx).toHaveBeenCalledWith({ period: 'all', place: 'odh' })
+    const aero = within(screen.getByRole('table')).getByRole('link', { name: /Аэропорт/ })
+    expect(aero).toHaveAttribute('href', '/summary/d-aero?place=odh')
   })
 
   it('префектура открывает подробный свод района с тем же периодом и возвращается к таблице', async () => {

@@ -4,7 +4,7 @@ import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
-import type { CardDetail, CardListItem, Photo, User } from '@/types'
+import type { CardDetail, CardListItem, Photo, Territory, User } from '@/types'
 
 export const districtUser: User = {
   id: 'u-1',
@@ -58,6 +58,24 @@ export function photo(kind: 'before' | 'after', attempt = kind === 'before' ? 0 
   }
 }
 
+export const dtTerritory: Territory = {
+  id: 't-dt-1',
+  kind: 'dt',
+  name: 'Усиевича ул. 8',
+  owner: 'Жилищник Аэропорт',
+  category: '3 категория',
+  passport_url: 'https://reestr-ogh.mos.ru/ogh/132296151000038',
+}
+
+export const odhTerritory: Territory = {
+  id: 't-odh-1',
+  kind: 'odh',
+  name: '1-я Аэропортовская улица',
+  owner: 'Жилищник Аэропорт',
+  category: '4 категория',
+  passport_url: 'https://reestr-ogh.mos.ru/ogh/132061852100001',
+}
+
 export function listItem(overrides: Partial<CardListItem> = {}): CardListItem {
   return {
     id: 'card-1',
@@ -65,7 +83,9 @@ export function listItem(overrides: Partial<CardListItem> = {}): CardListItem {
     label: 'ОЛХ-001',
     district_id: 'd-aero',
     district_name: 'Аэропорт',
-    address: 'ул. Усиевича, д. 10',
+    address: 'Усиевича ул. 8 — у подъезда 2',
+    place_kind: 'dt',
+    territory: dtTerritory,
     status: 'detected',
     current_attempt: 0,
     created_at: '2026-09-30T08:15:00Z',
@@ -144,3 +164,15 @@ export function fakeServer(handler: (req: FakeRequest) => { status: number; body
 }
 
 export const expiredReply = { status: 401, body: { detail: 'Сессия истекла — войдите заново' } }
+
+/** Выбор места люка в форме: тип ДТ/ОДХ и объект из справочника района. */
+export async function chooseTerritory(
+  user: { click: (el: Element) => Promise<void>; type: (el: Element, text: string) => Promise<void> },
+  territory: Territory = dtTerritory,
+  query = territory.name.split(' ')[0],
+) {
+  const { screen } = await import('@testing-library/react')
+  await user.click(screen.getByRole('button', { name: new RegExp(`^${territory.kind === 'dt' ? 'ДТ' : 'ОДХ'}`) }))
+  await user.type(await screen.findByLabelText(/^Найдите/), query)
+  await user.click(await screen.findByRole('button', { name: territory.name }))
+}

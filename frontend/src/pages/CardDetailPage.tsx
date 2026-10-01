@@ -11,6 +11,8 @@ import { formatDateTime } from '@/lib/format'
 import { MAX_PHOTOS } from '@/lib/photoUpload'
 import { statusLine } from '@/lib/status'
 import type { CardDetail, CardEvent, Photo } from '@/types'
+import { PlaceBadge } from '@/components/PlaceBadge'
+import { OWNER_LABELS } from '@/lib/place'
 
 const EVENT_TEXT: Record<CardEvent['kind'], string> = {
   created: 'Нарушение зафиксировано',
@@ -83,12 +85,36 @@ function CardBody({ card }: { card: CardDetail }) {
           <h1 className="text-3xl font-bold tracking-tight">{card.label}</h1>
           <StatusPill status={card.status} />
         </div>
-        <div className="text-lg font-semibold text-slate-800">{card.address}</div>
+        <div className="flex items-start gap-2 text-lg font-semibold text-slate-800">
+          <PlaceBadge kind={card.place_kind} />
+          <span>{card.address}</span>
+        </div>
         <dl className="grid gap-x-6 gap-y-1 text-sm text-slate-600 sm:grid-cols-2">
           <div>
             <dt className="inline">Район: </dt>
             <dd className="inline font-semibold text-slate-800">{card.district_name}</dd>
           </div>
+          {card.territory && (
+            <div>
+              <dt className="inline">{OWNER_LABELS[card.territory.kind]}: </dt>
+              <dd className="inline">
+                {card.territory.owner ?? '—'}
+                {card.territory.passport_url && (
+                  <>
+                    {' · '}
+                    <a
+                      href={card.territory.passport_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-brand-600 hover:underline"
+                    >
+                      Паспорт в реестре
+                    </a>
+                  </>
+                )}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="inline">Зафиксировано: </dt>
             <dd className="inline">

@@ -17,5 +17,8 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: docker
+    directories:
+      - /backend
+      - /frontend
     schedule:
       interval: weekly

@@ -106,4 +106,17 @@ describe('JournalPage', () => {
     expect(screen.queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument()
     expect(cardsApi.list).not.toHaveBeenCalled()
   })
+  it('«Где найдены» отбирает ДТ или ОДХ, у карточки видна метка', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<JournalPage />)
+    const row = await screen.findByTestId('card-row')
+    expect(row).toHaveTextContent('ДТУсиевича ул. 8 — у подъезда 2')
+    expect(screen.getByRole('button', { name: 'Все' , pressed: true })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'ОДХ' }))
+    await waitFor(() => expect(cardsApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ place: 'odh' })))
+    expect(screen.getByRole('button', { name: 'ОДХ' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Все', pressed: false }))
+    await waitFor(() => expect(cardsApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ place: undefined })))
+  })
 })

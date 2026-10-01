@@ -12,6 +12,9 @@ import { periodReady, readPeriod, writePeriod } from '@/lib/period'
 import { notify } from '@/lib/toast'
 import { useAuthStore } from '@/stores/auth'
 import type { DistrictSummary as DistrictSummaryData, DynamicsBucket, OldestOpenCard } from '@/types'
+import { PlaceBadge } from '@/components/PlaceBadge'
+import { PlaceChips } from '@/components/PlaceChips'
+import { placeSuffix, readPlace, writePlace } from '@/lib/place'
 
 export const PERIOD_NOTE =
   'Показатели и динамика — по карточкам, выявленным в выбранном периоде. «Дольше всех ждут исправления» — все неисправленные карточки района, независимо от периода.'
@@ -103,7 +106,10 @@ function OldestOpenSection({ cards }: { cards: OldestOpenCard[] }) {
                     <span className="text-lg font-bold tracking-tight text-slate-900">{c.label}</span>
                     <StatusPill status={c.status} />
                   </div>
-                  <div className="font-semibold text-slate-800">{c.address}</div>
+                  <div className="flex items-start gap-1.5 font-semibold text-slate-800">
+                    <PlaceBadge kind={c.place_kind} />
+                    <span>{c.address}</span>
+                  </div>
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="text-lg font-bold tabular-nums text-red-700">{c.age_days} дн.</div>
@@ -125,10 +131,11 @@ export function DistrictSummary({ districtId, showBack = false }: { districtId?:
   const user = useAuthStore((s) => s.user)!
   const [search, setSearch] = useSearchParams()
   const period = readPeriod(search)
-  const params = { ...period, district_id: districtId }
+  const place = readPlace(search)
+  const params = { ...period, district_id: districtId, place: place === 'all' ? undefined : place }
   const [downloading, setDownloading] = useState(false)
   const query = useQuery({
-    queryKey: ['summary', 'district', districtId ?? 'own', period],
+    queryKey: ['summary', 'district', districtId ?? 'own', period, place],
     queryFn: () => summaryApi.district(params),
     enabled: periodReady(period),
   })
@@ -142,7 +149,7 @@ export function DistrictSummary({ districtId, showBack = false }: { districtId?:
     try {
       const blob = await summaryApi.districtXlsx(params)
       const suffix = data && data.period.kind !== 'all' ? ` ${data.period.label}` : ''
-      saveBlob(blob, `Свод по люкам — ${name ?? 'район'}${suffix}.xlsx`)
+      saveBlob(blob, `Свод по люкам — ${name ?? 'район'}${placeSuffix(place)}${suffix}.xlsx`)
     } catch (err) {
       notify.error(describeError(err, 'Не удалось скачать Excel'))
     } finally {
@@ -174,6 +181,7 @@ export function DistrictSummary({ districtId, showBack = false }: { districtId?:
         resolved={data?.period}
         onChange={(p) => setSearch(writePeriod(search, p), { replace: true })}
       />
+      <PlaceChips value={place} onChange={(p) => setSearch(writePlace(search, p), { replace: true })} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="district-kpis">
         <Kpi label="Выявлено" value={t?.detected ?? '…'} tone="text-slate-900" />

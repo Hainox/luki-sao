@@ -1,0 +1,10 @@
+# Исключения проверки trivy config (CI, security-scan) — каждое с причиной.
+misconfigurations:
+  - id: DS-0002
+    paths:
+      - backend/Dockerfile
+    statement: >-
+      Контейнер API стартует от root только чтобы починить владельца
+      примонтированного каталога фото (bind mount перекрывает владельца из
+      образа) и сразу переходит на appuser через setpriv — см.
+      backend/docker-entrypoint.sh. USER в Dockerfile сломал бы этот шаг.

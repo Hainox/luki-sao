@@ -21,7 +21,12 @@ describe('CardDetailPage', () => {
     expect(container.textContent).toContain('Фото ДО')
     expect(container.textContent).toContain('Фото ПОСЛЕ')
     expect(container.textContent).toContain('История')
-    expect(container.textContent).toContain('ул. Усиевича, д. 10')
+    expect(container.textContent).toContain('ДТУсиевича ул. 8 — у подъезда 2')
+    expect(container.textContent).toContain('Балансодержатель: Жилищник Аэропорт')
+    expect(screen.getByRole('link', { name: 'Паспорт в реестре' })).toHaveAttribute(
+      'href',
+      'https://reestr-ogh.mos.ru/ogh/132296151000038',
+    )
   })
 
   it('невалидная карточка — ошибка без падения', async () => {

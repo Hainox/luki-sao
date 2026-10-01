@@ -1,0 +1,7 @@
+# Не секреты: заглушки SECRET_KEY для тестов и mypy в CI (без ключа настройки
+# приложения не загружаются). Отпечатки: для истории — коммит:файл:правило:строка,
+# для проверки рабочего дерева — файл:правило:строка.
+618a637433b704de294fb1ebc913095719736960:.github/workflows/ci.yml:generic-api-key:46
+618a637433b704de294fb1ebc913095719736960:backend/tests/conftest.py:generic-api-key:15
+.github/workflows/ci.yml:generic-api-key:46
+backend/tests/conftest.py:generic-api-key:16

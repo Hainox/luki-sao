@@ -25,6 +25,25 @@ export type CardStatus = 'detected' | 'on_review' | 'accepted' | 'returned'
 export type FilterGroup = 'all' | 'open' | 'on_review' | 'accepted'
 export type PeriodKind = 'all' | 'today' | 'week' | 'month' | 'custom'
 export type PhotoKind = 'before' | 'after'
+/** Где найден люк: ДТ — дворовая территория, ОДХ — объект дорожного хозяйства. */
+export type PlaceKind = 'dt' | 'odh'
+export type PlaceFilter = 'all' | PlaceKind
+
+/** Объект реестра АСУ ОДС (справочник ДТ/ОДХ). */
+export interface Territory {
+  id: string
+  kind: PlaceKind
+  name: string
+  /** Балансодержатель ДТ или заказчик ОДХ. */
+  owner: string | null
+  category: string | null
+  passport_url: string | null
+}
+
+export interface NearbyTerritory extends Territory {
+  /** 0 — сотрудник стоит на самом объекте. */
+  distance_m: number
+}
 
 export interface Person {
   id: string
@@ -65,6 +84,9 @@ export interface CardListItem {
   district_id: string
   district_name: string
   address: string
+  /** null — карточка заведена до справочника ДТ/ОДХ. */
+  place_kind: PlaceKind | null
+  territory: Territory | null
   status: CardStatus
   current_attempt: number
   created_at: string
@@ -127,6 +149,7 @@ export interface SummaryRow {
 
 export interface Summary {
   period: PeriodInfo
+  place: PlaceFilter
   rows: SummaryRow[]
   total: SummaryRow
 }
@@ -135,6 +158,10 @@ export interface PeriodParams {
   period: PeriodKind
   date_from?: string
   date_to?: string
+}
+
+export interface SummaryParams extends PeriodParams {
+  place?: PlaceFilter
 }
 
 /** Подробный свод по одному району (GET /api/summary/district). */
@@ -163,6 +190,7 @@ export interface OldestOpenCard {
   id: string
   label: string
   address: string
+  place_kind: PlaceKind | null
   status: CardStatus
   created_at: string
   age_days: number
@@ -171,13 +199,14 @@ export interface OldestOpenCard {
 export interface DistrictSummary {
   district: District
   period: PeriodInfo
+  place: PlaceFilter
   totals: DistrictSummaryTotals
   dynamics_unit: 'day' | 'month'
   dynamics: DynamicsBucket[]
   oldest_open: OldestOpenCard[]
 }
 
-export interface DistrictSummaryParams extends PeriodParams {
+export interface DistrictSummaryParams extends SummaryParams {
   /** Префектура указывает район; сотруднику района сервер берёт его район сам. */
   district_id?: string
 }
@@ -185,7 +214,10 @@ export interface DistrictSummaryParams extends PeriodParams {
 export interface CardCreate {
   id: string
   district_id?: string
-  address: string
+  place_kind: PlaceKind
+  territory_id: string
+  /** Уточнение к объекту: «у подъезда 2». */
+  address_note?: string
   lat?: number
   lon?: number
   comment?: string

@@ -3,7 +3,7 @@
 import asyncio
 import uuid
 
-from tests.conftest import DISTRICT_IDS, create_card, login_as, run_sql, upload
+from tests.conftest import DISTRICT_IDS, create_card, login_as, place, run_sql, upload
 
 
 async def test_full_cycle_keeps_history_and_counts_detected_once(client, jj, admin):
@@ -160,7 +160,9 @@ async def test_decisions_only_for_cards_on_review(client, jj, admin):
 
 
 async def test_admin_creates_card_in_chosen_district(client, jj, admin):
-    r = await client.post("/api/cards", json={"address": "ул. Зорге, 1"}, headers=admin)
+    r = await client.post(
+        "/api/cards", json={**place("Сокол"), "address_note": "ул. Зорге, 1"}, headers=admin
+    )
     assert r.status_code == 422
     assert r.json()["detail"] == "Выберите район"
     card = await create_card(client, admin, district="Сокол")
@@ -173,14 +175,10 @@ async def test_coordinates_are_rounded_and_paired(client, jj):
     detail = (await client.get(f"/api/cards/{card['id']}", headers=inspector)).json()
     assert detail["lat"] == "55.805123"
     assert detail["lon"] == "37.512346"
-    r = await client.post(
-        "/api/cards", json={"address": "ул. Зорге, 1", "lat": 55.8}, headers=inspector
-    )
+    r = await client.post("/api/cards", json={**place("Аэропорт"), "lat": 55.8}, headers=inspector)
     assert r.status_code == 422
     r = await client.post(
-        "/api/cards",
-        json={"address": "ул. Зорге, 1", "lat": 95, "lon": 37},
-        headers=inspector,
+        "/api/cards", json={**place("Аэропорт"), "lat": 95, "lon": 37}, headers=inspector
     )
     assert r.status_code == 422
 
@@ -267,7 +265,7 @@ async def test_repeated_create_with_same_id_does_not_duplicate_card(client, jj):
     assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1
 
     r = await client.post(
-        "/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague
+        "/api/cards", json={"id": card_id, **place("Аэропорт")}, headers=colleague
     )
     assert r.status_code == 409
     assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1
@@ -303,7 +301,7 @@ async def test_simultaneous_create_with_same_id_returns_card_not_500(client, jj,
 
     missed.clear()
     r = await client.post(
-        "/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague
+        "/api/cards", json={"id": card_id, **place("Аэропорт")}, headers=colleague
     )
     assert missed == [card_id]
     assert r.status_code == 409
