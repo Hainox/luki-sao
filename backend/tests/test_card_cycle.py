@@ -235,3 +235,38 @@ async def test_repeated_create_with_same_id_does_not_duplicate_card(client, jj):
     r = await client.post("/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague)
     assert r.status_code == 409
     assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1
+
+
+async def test_simultaneous_create_with_same_id_returns_card_not_500(client, jj, monkeypatch):
+    # Два «Зафиксировать» в одну секунду: второй запрос проверяет id, пока
+    # первый ещё не закоммичен, не видит карточку и упирается во вставке в
+    # первичный ключ. Раньше это был 500 — теперь та же карточка (или 409
+    # чужому). Гонку воспроизводим детерминированно: первая проверка «не
+    # видит» уже созданную карточку.
+    from app.routers import cards as cards_router
+
+    inspector = await login_as(client, jj, "inspector1")
+    colleague = await login_as(client, jj, "inspector2")
+    card_id = str(uuid.uuid4())
+    first = await create_card(client, inspector, id=card_id)
+
+    real_find = cards_router._find_card
+    missed: list[str] = []
+
+    async def miss_once(db, cid):
+        if not missed:
+            missed.append(str(cid))
+            return None
+        return await real_find(db, cid)
+
+    monkeypatch.setattr(cards_router, "_find_card", miss_once)
+    again = await create_card(client, inspector, id=card_id)
+    assert missed == [card_id]
+    assert again["id"] == first["id"] and again["label"] == first["label"]
+    assert [e["kind"] for e in again["events"]] == ["created"]
+
+    missed.clear()
+    r = await client.post("/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague)
+    assert missed == [card_id]
+    assert r.status_code == 409
+    assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1
