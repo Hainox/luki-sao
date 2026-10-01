@@ -46,6 +46,22 @@ describe('JournalPage', () => {
     expect(screen.getByRole('link', { name: /Зафиксировать нарушение/ })).toHaveAttribute('href', '/cards/new')
   })
 
+  it('без нарушений в сводной строке нет прочерка вместо процента', async () => {
+    vi.mocked(cardsApi.list).mockResolvedValue({
+      ...page,
+      items: [],
+      total: 0,
+      counts: { all: 0, open: 0, on_review: 0, accepted: 0 },
+    })
+    renderWithProviders(<JournalPage />)
+    await waitFor(() =>
+      expect(screen.getByTestId('summary-strip')).toHaveTextContent(
+        'Район: Аэропорт|Выявлено: 0|Исправлено: 0|Исправлено — после приёмки префектурой.',
+      ),
+    )
+    expect(screen.getByTestId('summary-strip').textContent).not.toMatch(/—\s*—/)
+  })
+
   it('фильтр и период уходят в запрос', async () => {
     const user = userEvent.setup()
     renderWithProviders(<JournalPage />)
