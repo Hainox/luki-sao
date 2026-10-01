@@ -6,6 +6,7 @@ import { cardsApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { roleLabel } from '@/lib/roles'
 import { HatchMark } from '@/components/HatchMark'
+import { ReloginDialog } from '@/components/ReloginDialog'
 
 interface NavItem {
   to: string
@@ -146,6 +147,8 @@ export default function Layout() {
           </div>
         </nav>
       </div>
+
+      <ReloginDialog />
     </div>
   )
 }

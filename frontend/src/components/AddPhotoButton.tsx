@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Camera, ImagePlus, RotateCcw } from 'lucide-react'
-import { ApiError, cardsApi, describeError, isRetryable } from '@/lib/api'
-import { PHOTO_ACCEPT, photoProblem, uploadWithRetry } from '@/lib/photoUpload'
+import { ApiError, LoggedOutError, cardsApi, describeError, isRetryable } from '@/lib/api'
+import { PHOTO_ACCEPT, RETRY_DELAYS_MS, photoProblem, uploadWithRetry } from '@/lib/photoUpload'
 import { notify } from '@/lib/toast'
 import { invalidateCardQueries } from '@/lib/queries'
+import { askReloginIfExpiring } from '@/stores/auth'
 import type { PhotoKind } from '@/types'
 
 interface Props {
@@ -31,12 +32,30 @@ export function AddPhotoButton({ cardId, kind, label, remaining, withGallery = f
     let sent = 0
     let conflict = false
     const stuck: File[] = []
+    // Попытка, в которую легли уже отправленные фото ПОСЛЕ этой пачки.
+    let batchAttempt: number | null = null
+    // Пока ждали повторного входа, префектура могла вынести решение по
+    // карточке — тогда остальные фото пачки молча открыли бы новую попытку.
+    // Останавливаемся так же, как на 409 от сервера (см. ниже).
+    const sameAttempt = async () => {
+      if (kind !== 'after' || batchAttempt === null) return
+      const card = await cardsApi.get(cardId)
+      const next = card.status === 'detected' || card.status === 'returned' ? card.current_attempt + 1 : card.current_attempt
+      if (next !== batchAttempt) {
+        throw new ApiError('HTTP 409', {
+          response: { status: 409, data: { detail: 'Пока вы входили, префектура уже вынесла решение по карточке — откройте её заново' } },
+        })
+      }
+    }
     for (const [i, file] of files.entries()) {
       setProgress(files.length > 1 ? `Отправляем ${i + 1} из ${files.length}…` : 'Отправляем…')
       try {
-        await uploadWithRetry(() => cardsApi.uploadPhoto(cardId, kind, file))
+        const photo = await uploadWithRetry(() => cardsApi.uploadPhoto(cardId, kind, file), RETRY_DELAYS_MS, sameAttempt)
+        batchAttempt = photo.attempt
         sent++
       } catch (err) {
+        // Вместо повторного входа сотрудник вышел — фото уходят вместе со страницей.
+        if (err instanceof LoggedOutError) return
         notify.error(describeError(err, 'Фото не отправилось'))
         if (isRetryable(err)) stuck.push(file)
         // 409 — карточка изменилась (решение префектуры, лимит фото).
@@ -69,6 +88,11 @@ export function AddPhotoButton({ cardId, kind, label, remaining, withGallery = f
     if (batch.length) void send(batch)
   }
 
+  // Вход кончается в ближайшие минуты — сначала окно входа, съёмка потом.
+  const pick = (input: HTMLInputElement | null) => {
+    if (!askReloginIfExpiring()) input?.click()
+  }
+
   const busy = progress !== null
   return (
     <div className={className} onClick={(e) => e.stopPropagation()}>
@@ -79,7 +103,7 @@ export function AddPhotoButton({ cardId, kind, label, remaining, withGallery = f
           type="button"
           className="btn-primary flex-1 whitespace-nowrap"
           disabled={busy || remaining <= 0}
-          onClick={() => cameraRef.current?.click()}
+          onClick={() => pick(cameraRef.current)}
         >
           <Camera className="h-5 w-5 shrink-0" aria-hidden />
           {progress ?? label}
@@ -89,7 +113,7 @@ export function AddPhotoButton({ cardId, kind, label, remaining, withGallery = f
             type="button"
             className="btn-secondary"
             disabled={busy || remaining <= 0}
-            onClick={() => galleryRef.current?.click()}
+            onClick={() => pick(galleryRef.current)}
           >
             <ImagePlus className="h-5 w-5 shrink-0" aria-hidden />
             Из галереи

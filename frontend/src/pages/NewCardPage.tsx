@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Camera, ImagePlus, LocateFixed, RotateCcw, Trash2, X } from 'lucide-react'
-import { cardsApi, describeError, districtsApi, isRetryable } from '@/lib/api'
+import { LoggedOutError, cardsApi, describeError, districtsApi, isRetryable, retryAfterRelogin } from '@/lib/api'
 import { MAX_PHOTOS, PHOTO_ACCEPT, photoProblem, uploadWithRetry } from '@/lib/photoUpload'
 import { invalidateCardQueries } from '@/lib/queries'
 import { newCardId, submitBlocker } from '@/lib/newCard'
 import { notify } from '@/lib/toast'
-import { useAuthStore } from '@/stores/auth'
+import { askReloginIfExpiring, useAuthStore } from '@/stores/auth'
 import type { CardDetail } from '@/types'
 
 type Coords = { lat: number; lon: number; accuracy: number }
@@ -70,6 +70,12 @@ export default function NewCardPage() {
   const [created, setCreated] = useState<CardDetail | null>(null)
   const [failed, setFailed] = useState<File[]>([])
 
+  // Вход кончается в ближайшие минуты — просим войти заново до съёмки, а не
+  // посреди отправки.
+  useEffect(() => {
+    askReloginIfExpiring()
+  }, [])
+
   const { data: districts = [] } = useQuery({
     queryKey: ['districts'],
     queryFn: districtsApi.list,
@@ -130,6 +136,7 @@ export default function NewCardPage() {
       try {
         await uploadWithRetry(() => cardsApi.uploadPhoto(card.id, 'before', file))
       } catch (err) {
+        if (err instanceof LoggedOutError) return
         if (isRetryable(err)) stuck.push(file)
         else notify.error(describeError(err, 'Фото не загрузилось'))
       }
@@ -150,17 +157,19 @@ export default function NewCardPage() {
     setBusy('Сохраняем карточку…')
     let card: CardDetail
     try {
-      card = await cardsApi.create({
-        id: cardId,
-        address: address.trim(),
-        district_id: user.is_prefecture ? districtId : undefined,
-        comment: comment.trim() || undefined,
-        lat: coords?.lat,
-        lon: coords?.lon,
-      })
+      card = await retryAfterRelogin(() =>
+        cardsApi.create({
+          id: cardId,
+          address: address.trim(),
+          district_id: user.is_prefecture ? districtId : undefined,
+          comment: comment.trim() || undefined,
+          lat: coords?.lat,
+          lon: coords?.lon,
+        }),
+      )
     } catch (err) {
       setBusy(null)
-      notify.error(describeError(err, 'Не удалось сохранить карточку'))
+      if (!(err instanceof LoggedOutError)) notify.error(describeError(err, 'Не удалось сохранить карточку'))
       return
     }
     setCreated(card)

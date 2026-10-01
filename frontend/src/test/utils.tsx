@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import { vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -27,8 +28,12 @@ export const prefectureUser: User = {
   can_create_cards: true,
 }
 
-export function renderWithProviders(ui: ReactElement, { route = '/', user = districtUser }: { route?: string; user?: User | null } = {}) {
-  useAuthStore.setState({ token: user ? 'token' : null, user })
+export function renderWithProviders(
+  ui: ReactElement,
+  { route = '/', user = districtUser, token = 'token' }: { route?: string; user?: User | null; token?: string } = {},
+) {
+  if (user) useAuthStore.getState().login(token, user)
+  else useAuthStore.getState().logout()
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return {
     queryClient,
@@ -97,3 +102,45 @@ export function cardDetail(overrides: Partial<CardDetail> = {}): CardDetail {
     ...overrides,
   }
 }
+
+/** JWT с нужным сроком: подпись клиент не проверяет, важен только exp. */
+export function fakeJwt(expiresInMs: number, sub = 'u-1'): string {
+  const part = (o: object) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const exp = Math.floor((Date.now() + expiresInMs) / 1000)
+  return `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ sub, role: 'inspector', exp })}.signature`
+}
+
+export interface FakeRequest {
+  method: string
+  /** Путь вместе с query, как его отправил клиент: /api/cards/card-1/photos?kind=after */
+  path: string
+  auth: string | null
+  body: unknown
+}
+
+/** Подменяет fetch: запросы идут через настоящий клиент API (src/lib/api.ts),
+ *  а отвечает handler — так проверяется вся цепочка 401 → окно входа → повтор. */
+export function fakeServer(handler: (req: FakeRequest) => { status: number; body?: unknown }) {
+  const requests: FakeRequest[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string, init: RequestInit = {}) => {
+      const headers = (init.headers ?? {}) as Record<string, string>
+      const req: FakeRequest = {
+        method: init.method ?? 'GET',
+        path: input,
+        auth: headers.Authorization ?? null,
+        body: typeof init.body === 'string' ? JSON.parse(init.body) : init.body,
+      }
+      requests.push(req)
+      const { status, body } = handler(req)
+      return new Response(body === undefined ? null : JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }),
+  )
+  return requests
+}
+
+export const expiredReply = { status: 401, body: { detail: 'Сессия истекла — войдите заново' } }

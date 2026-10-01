@@ -24,8 +24,9 @@ function RequirePrefecture({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-// При открытии приложения сверяем сессию с сервером: истёкший токен сразу
-// ведёт на вход (а не на пустые экраны), а роль и район — всегда актуальные.
+// При открытии приложения сверяем сессию с сервером: на истёкший токен
+// сразу открывается окно повторного входа (а не пустые экраны), а роль и
+// район — всегда актуальные.
 function useSyncUser() {
   const token = useAuthStore((s) => s.token)
   const setUser = useAuthStore((s) => s.setUser)
