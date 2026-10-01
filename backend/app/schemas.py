@@ -183,3 +183,43 @@ class SummaryOut(BaseModel):
     period: PeriodOut
     rows: list[SummaryRow]
     total: SummaryRow
+
+
+class DistrictSummaryTotals(BaseModel):
+    """По карточкам, созданным в периоде; статус — текущий."""
+    detected: int
+    accepted: int
+    on_review: int
+    # Ждут работы района: выявлено + возвращено на доработку.
+    open: int
+    returned_now: int
+    percent_text: str
+    returns_count: int
+    avg_days_to_accept: float | None
+
+
+class DynamicsBucket(BaseModel):
+    label: str
+    date_from: date
+    date_to: date
+    detected: int
+    accepted: int
+    percent_text: str
+
+
+class OldestOpenCard(BaseModel):
+    id: UUID
+    label: str
+    address: str
+    status: CardStatus
+    created_at: datetime
+    age_days: int
+
+
+class DistrictSummaryOut(BaseModel):
+    district: DistrictOut
+    period: PeriodOut
+    totals: DistrictSummaryTotals
+    dynamics_unit: Literal["day", "month"]
+    dynamics: list[DynamicsBucket]
+    oldest_open: list[OldestOpenCard]
