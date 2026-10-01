@@ -19,6 +19,9 @@ const FILTER_VALUES = new Set(FILTERS.map((f) => f.value))
 function SummaryStrip({ districtName, counts }: { districtName: string; counts?: FilterCounts }) {
   const detected = counts?.all ?? 0
   const fixed = counts?.accepted ?? 0
+  // Без выявленных процент — прочерк, и рядом с тире пояснения строка
+  // читалась «— — Исправлено…».
+  const percent = !counts ? '…' : detected > 0 ? formatPercent(fixed, detected) : null
   return (
     <div className="card flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-[15px] sm:gap-x-3" data-testid="summary-strip">
       <span>
@@ -40,8 +43,13 @@ function SummaryStrip({ districtName, counts }: { districtName: string; counts?:
         |
       </span>
       <span>
-        <b>{counts ? formatPercent(fixed, detected) : '…'}</b>
-        <span className="text-slate-500"> — Исправлено — после приёмки префектурой.</span>
+        {percent !== null && (
+          <>
+            <b>{percent}</b>
+            <span className="text-slate-500"> — </span>
+          </>
+        )}
+        <span className="text-slate-500">Исправлено — после приёмки префектурой.</span>
       </span>
     </div>
   )
