@@ -1,4 +1,4 @@
-"""Свод по люкам — открыт всем вошедшим (общая таблица округа)."""
+"""Свод по люкам: таблица по всем районам — только префектуре."""
 from datetime import date
 from urllib.parse import quote
 
@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from app.database import get_db
 from app.models import User
 from app.schemas import SummaryOut
+from app.services import access
 from app.services.periods import resolve_period
 from app.services.security import get_current_user
 from app.services.summary import build_summary, summary_xlsx
@@ -18,13 +19,18 @@ router = APIRouter()
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+async def okrug_summary_user(user: User = Depends(get_current_user)) -> User:
+    access.require_okrug_summary(user)
+    return user
+
+
 @router.get("/summary", response_model=SummaryOut)
 async def get_summary(
     period: str = "all",
     date_from: date | None = None,
     date_to: date | None = None,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(okrug_summary_user),
 ):
     return await build_summary(db, resolve_period(period, date_from, date_to))
 
@@ -35,7 +41,7 @@ async def get_summary_xlsx(
     date_from: date | None = None,
     date_to: date | None = None,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(okrug_summary_user),
 ):
     per = resolve_period(period, date_from, date_to)
     content = await run_in_threadpool(summary_xlsx, await build_summary(db, per))

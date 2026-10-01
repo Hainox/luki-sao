@@ -1,15 +1,15 @@
 """Права доступа.
 
 Роли журнала обходов переносятся так:
-  admin                → префектура: видит всё, принимает/возвращает, может
-                          создать карточку в любом районе;
-  inspector / reviewer → сотрудник района: журнал и действия только в своём
-                          районе. Проверяющий без района (проверяющий округа) —
-                          просмотр всего округа, но без создания и исправления.
-                          Инспектор без района журнала не видит вовсе: в
-                          журнале обходов это незавершённая настройка
-                          аккаунта, и тот отдаёт ему пустой список районов.
-Свод по люкам открыт всем вошедшим.
+  admin                → префектура: весь округ — журнал и свод по всем
+                          районам; принимает/возвращает, может создать
+                          карточку в любом районе;
+  inspector / reviewer → сотрудник района: журнал, действия и свод только по
+                          своему району.
+Сотрудник без района (инспектор или проверяющий) не видит ни журнала, ни
+свода: в журнале обходов это незавершённая настройка аккаунта. Весь округ и
+чужие районы видит только префектура — решение владельца продукта
+(docs/DECISIONS.md, «Свод и журнал по всему округу — только префектура»).
 """
 from uuid import UUID
 
@@ -28,9 +28,16 @@ NO_DISTRICT_JOURNAL_MESSAGE = (
     "Обратитесь к администратору журнала обходов."
 )
 
+NO_DISTRICT_SUMMARY_MESSAGE = (
+    "В журнале обходов вам не назначен район — свод недоступен. "
+    "Обратитесь к администратору журнала обходов."
+)
+OKRUG_SUMMARY_MESSAGE = "Свод по всем районам доступен только префектуре"
+OTHER_DISTRICT_SUMMARY_MESSAGE = "Статистика другого района вам недоступна"
+
 
 def sees_whole_okrug(user: User) -> bool:
-    return user.is_prefecture or (user.role == "reviewer" and user.district_id is None)
+    return user.is_prefecture
 
 
 def resolve_district_filter(user: User, requested: UUID | None) -> UUID | None:
@@ -40,6 +47,28 @@ def resolve_district_filter(user: User, requested: UUID | None) -> UUID | None:
         raise HTTPException(403, NO_DISTRICT_JOURNAL_MESSAGE)
     if requested is not None and requested != user.district_id:
         raise HTTPException(403, "Журнал другого района вам недоступен")
+    return user.district_id
+
+
+def require_okrug_summary(user: User) -> None:
+    if sees_whole_okrug(user):
+        return
+    if user.district_id is None:
+        raise HTTPException(403, NO_DISTRICT_SUMMARY_MESSAGE)
+    raise HTTPException(403, OKRUG_SUMMARY_MESSAGE)
+
+
+def resolve_summary_district(user: User, requested: UUID | None) -> UUID:
+    """Район для подробного свода: префектура выбирает любой, сотрудник
+    района — только свой (по умолчанию он и берётся)."""
+    if sees_whole_okrug(user):
+        if requested is None:
+            raise HTTPException(422, "Выберите район")
+        return requested
+    if user.district_id is None:
+        raise HTTPException(403, NO_DISTRICT_SUMMARY_MESSAGE)
+    if requested is not None and requested != user.district_id:
+        raise HTTPException(403, OTHER_DISTRICT_SUMMARY_MESSAGE)
     return user.district_id
 
 
