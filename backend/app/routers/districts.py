@@ -1,4 +1,5 @@
 """Список районов (синхронизируется из журнала обходов при входе)."""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 

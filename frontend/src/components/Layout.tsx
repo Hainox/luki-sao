@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BarChart3, CircleHelp, ClipboardCheck, Images, LogOut } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { cardsApi } from '@/lib/api'
+import { authApi, cardsApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { hasNoJournal, roleLabel } from '@/lib/roles'
 import { HatchMark } from '@/components/HatchMark'
@@ -58,9 +58,14 @@ export default function Layout({ children }: { children?: ReactNode }) {
   const queryClient = useQueryClient()
 
   const onLogout = () => {
-    logout()
-    queryClient.clear()
-    navigate('/login', { replace: true })
+    // Токен отзываем на сервере (jti в blocklist), чтобы украденный токен
+    // не жил до конца своих 8 часов. Не получилось — всё равно выходим
+    // локально: сервер и так инвалидирует сессию по следующему входу.
+    void authApi.logout().catch(() => {}).finally(() => {
+      logout()
+      queryClient.clear()
+      navigate('/login', { replace: true })
+    })
   }
 
   return (

@@ -2,7 +2,8 @@
 (жёлтые заголовки, рамка, центровка), чтобы свод по люкам выглядел как
 остальные отчёты округа. Перенесено из JiraJura app/services/xlsx_style.py.
 """
-from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 HEADER_FILL = PatternFill("solid", fgColor="FFFF00")
 _THIN = Side(style="thin")
@@ -70,7 +71,9 @@ def safe_append(ws, row) -> None:
 SPACER_ROW_HEIGHT = 8
 
 
-def style_merged_label(ws, row_idx: int, ncols: int, header: bool = False, fill: bool = True) -> None:
+def style_merged_label(
+    ws, row_idx: int, ncols: int, header: bool = False, fill: bool = True
+) -> None:
     """Одноколоночная 'ярлык'-строка (заголовок секции или длинная строка
     текста/сноска), слитая на ncols колонок в один заполненный блок вместо
     узкой рамки в одной колонке рядом с пустым нестилизованным местом.

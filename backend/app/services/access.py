@@ -11,6 +11,7 @@
 чужие районы видит только префектура — решение владельца продукта
 (docs/DECISIONS.md, «Свод и журнал по всему округу — только префектура»).
 """
+
 from uuid import UUID
 
 from fastapi import HTTPException

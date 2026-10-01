@@ -1,6 +1,8 @@
 """Карточки неудовлетворительных ОЛХ: фиксация, фото ДО/ПОСЛЕ, проверка префектурой."""
+
+import asyncio
 from datetime import date
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
@@ -13,9 +15,21 @@ from app.config import settings
 from app.database import get_db
 from app.models import UNKNOWN_DISTRICT_NAME, Card, CardEvent, CardPhoto, District, Territory, User
 from app.schemas import (
-    CardCreate, CardDetail, CardListItem, CardListOut, CardPermissions, EventOut,
-    FilterCounts, FilterGroup, PeriodOut, PersonOut, PhotoOut, PlaceFilter, ReturnRequest,
-    ReviewQueueOut, TerritoryOut,
+    CardCreate,
+    CardDetail,
+    CardListItem,
+    CardListOut,
+    CardPermissions,
+    EventOut,
+    FilterCounts,
+    FilterGroup,
+    PeriodOut,
+    PersonOut,
+    PhotoOut,
+    PlaceFilter,
+    ReturnRequest,
+    ReviewQueueOut,
+    TerritoryOut,
 )
 from app.services import access
 from app.services.audit import log_action
@@ -49,6 +63,7 @@ _CARD_OPTIONS = (
 
 # ── Сборка ответов ──────────────────────────────────────────────
 
+
 def _person(user: User) -> PersonOut:
     return PersonOut(id=user.id, full_name=user.full_name or user.login, login=user.login)
 
@@ -63,13 +78,15 @@ def _territory_out(t: Territory | None) -> TerritoryOut | None:
 
 def _photo_out(photo: CardPhoto) -> PhotoOut:
     original = public_url(photo.storage_path)
+    assert original is not None
     url = public_url(photo.preview_path) or original
+    thumbnail = public_url(photo.thumbnail_path) or url
     return PhotoOut(
         id=photo.id,
-        kind=photo.kind,
+        kind=cast(Literal["before", "after"], photo.kind),
         attempt=photo.attempt,
         url=url,
-        thumbnail_url=public_url(photo.thumbnail_path) or url,
+        thumbnail_url=thumbnail,
         original_url=original,
         uploaded_by=_person(photo.uploader),
         created_at=photo.created_at,
@@ -79,12 +96,15 @@ def _photo_out(photo: CardPhoto) -> PhotoOut:
 def _sorted_photos(card: Card) -> tuple[list[CardPhoto], list[CardPhoto]]:
     befores = sorted((p for p in card.photos if p.kind == "before"), key=lambda p: p.created_at)
     afters = sorted(
-        (p for p in card.photos if p.kind == "after"), key=lambda p: (p.attempt, p.created_at)
+        (p for p in card.photos if p.kind == "after"),
+        key=lambda p: (p.attempt, p.created_at),
     )
     return befores, afters
 
 
-def _permissions(user: User, card: Card, before_count: int, latest_after_count: int) -> CardPermissions:
+def _permissions(
+    user: User, card: Card, before_count: int, latest_after_count: int
+) -> CardPermissions:
     limit = settings.MAX_PHOTOS_PER_SET
     return CardPermissions(
         can_add_before=access.can_add_before(user, card, before_count, limit),
@@ -93,10 +113,19 @@ def _permissions(user: User, card: Card, before_count: int, latest_after_count: 
     )
 
 
-def _list_item_fields(card: Card, user: User) -> dict:
-    befores, afters = _sorted_photos(card)
+def _list_item_fields(
+    card: Card,
+    user: User,
+    *,
+    befores: list[CardPhoto] | None = None,
+    afters: list[CardPhoto] | None = None,
+    events: list[CardEvent] | None = None,
+) -> dict:
+    if befores is None or afters is None:
+        befores, afters = _sorted_photos(card)
     latest_afters = [p for p in afters if p.attempt == card.current_attempt]
-    events = sorted(card.events, key=lambda e: e.created_at)
+    if events is None:
+        events = sorted(card.events, key=lambda e: e.created_at)
     return_comment = None
     if card.status == "returned":
         returned = [e for e in events if e.kind == "returned"]
@@ -130,8 +159,9 @@ def _list_item(card: Card, user: User) -> CardListItem:
 
 def _detail(card: Card, user: User) -> CardDetail:
     befores, afters = _sorted_photos(card)
+    events = sorted(card.events, key=lambda e: e.created_at)
     return CardDetail(
-        **_list_item_fields(card, user),
+        **_list_item_fields(card, user, befores=befores, afters=afters, events=events),
         lat=card.lat,
         lon=card.lon,
         comment=card.comment,
@@ -139,25 +169,46 @@ def _detail(card: Card, user: User) -> CardDetail:
         photos=[_photo_out(p) for p in befores + afters],
         events=[
             EventOut(
-                id=e.id, kind=e.kind, attempt=e.attempt, comment=e.comment,
-                user=_person(e.user), created_at=e.created_at,
+                id=e.id,
+                kind=cast(
+                    Literal["created", "after_uploaded", "accepted", "returned"],
+                    e.kind,
+                ),
+                attempt=e.attempt,
+                comment=e.comment,
+                user=_person(e.user),
+                created_at=e.created_at,
             )
-            for e in sorted(card.events, key=lambda e: e.created_at)
+            for e in events
         ],
     )
 
 
 def _period_out(period: Period) -> PeriodOut:
-    return PeriodOut(kind=period.kind, date_from=period.date_from, date_to=period.date_to, label=period.label)
+    return PeriodOut(
+        kind=period.kind,
+        date_from=period.date_from,
+        date_to=period.date_to,
+        label=period.label,
+    )
 
 
 # ── Загрузка карточек ───────────────────────────────────────────
 
+
 async def _load_full(db: AsyncSession, card_id: UUID) -> Card | None:
-    return (await db.execute(
-        select(Card).where(Card.id == card_id).options(*_CARD_OPTIONS)
-        .execution_options(populate_existing=True)
-    )).unique().scalar_one_or_none()
+    return (
+        (
+            await db.execute(
+                select(Card)
+                .where(Card.id == card_id)
+                .options(*_CARD_OPTIONS)
+                .execution_options(populate_existing=True)
+            )
+        )
+        .unique()
+        .scalar_one_or_none()
+    )
 
 
 async def _get_visible(db: AsyncSession, card_id: UUID, user: User, *, lock: bool = False) -> Card:
@@ -173,28 +224,38 @@ async def _get_visible(db: AsyncSession, card_id: UUID, user: User, *, lock: boo
 
 
 async def _photo_counts(db: AsyncSession, card: Card) -> tuple[int, int]:
-    before_count = (await db.execute(
-        select(func.count()).select_from(CardPhoto)
-        .where(CardPhoto.card_id == card.id, CardPhoto.kind == "before")
-    )).scalar_one()
-    latest_after_count = (await db.execute(
-        select(func.count()).select_from(CardPhoto)
-        .where(
-            CardPhoto.card_id == card.id,
-            CardPhoto.kind == "after",
-            CardPhoto.attempt == card.current_attempt,
+    before_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(CardPhoto)
+            .where(CardPhoto.card_id == card.id, CardPhoto.kind == "before")
         )
-    )).scalar_one()
+    ).scalar_one()
+    latest_after_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(CardPhoto)
+            .where(
+                CardPhoto.card_id == card.id,
+                CardPhoto.kind == "after",
+                CardPhoto.attempt == card.current_attempt,
+            )
+        )
+    ).scalar_one()
     return before_count, latest_after_count
 
 
-def _check_upload(user: User, card: Card, kind: str, before_count: int, latest_after_count: int) -> None:
+def _check_upload(
+    user: User, card: Card, kind: str, before_count: int, latest_after_count: int
+) -> None:
     limit = settings.MAX_PHOTOS_PER_SET
     if kind == "before":
         if card.created_by != user.id:
             raise HTTPException(403, "Фото ДО добавляет только автор карточки")
         if card.status != "detected" or card.current_attempt > 0:
-            raise HTTPException(409, "Фото ДО больше добавить нельзя: по карточке уже есть фото ПОСЛЕ")
+            raise HTTPException(
+                409, "Фото ДО больше добавить нельзя: по карточке уже есть фото ПОСЛЕ"
+            )
         if before_count >= limit:
             raise HTTPException(409, f"К карточке можно приложить не больше {limit} фото ДО")
         return
@@ -221,10 +282,13 @@ async def _find_card(db: AsyncSession, card_id: UUID) -> Card | None:
 async def _repeated_create(db: AsyncSession, existing: Card, user: User) -> CardDetail:
     if existing.created_by != user.id:
         raise HTTPException(409, "Карточка с таким идентификатором уже создана другим сотрудником")
-    return _detail(await _load_full(db, existing.id), user)
+    full = await _load_full(db, existing.id)
+    assert full is not None
+    return _detail(full, user)
 
 
 # ── Эндпоинты ───────────────────────────────────────────────────
+
 
 @router.post("", response_model=CardDetail, status_code=201)
 async def create_card(
@@ -271,11 +335,24 @@ async def create_card(
         return await _repeated_create(db, existing, user)
     await db.refresh(card)
     db.add(CardEvent(card_id=card.id, kind="created", user_id=user.id))
-    log_action(db, user.id, "card_create", "card", card.id,
-               {"number": card.number, "district_id": str(district_id),
-                "place_kind": territory.kind, "territory_id": str(territory.id)}, client_ip(request))
+    log_action(
+        db,
+        user.id,
+        "card_create",
+        "card",
+        card.id,
+        {
+            "number": card.number,
+            "district_id": str(district_id),
+            "place_kind": territory.kind,
+            "territory_id": str(territory.id),
+        },
+        client_ip(request),
+    )
     await db.commit()
-    return _detail(await _load_full(db, card.id), user)
+    created = await _load_full(db, card.id)
+    assert created is not None
+    return _detail(created, user)
 
 
 @router.get("", response_model=CardListOut)
@@ -304,9 +381,10 @@ async def list_cards(
     if place != "all":
         conds.append(Card.place_kind == place)
 
-    by_status = dict((await db.execute(
-        select(Card.status, func.count()).where(*conds).group_by(Card.status)
-    )).all())
+    status_rows = (
+        await db.execute(select(Card.status, func.count()).where(*conds).group_by(Card.status))
+    ).all()
+    by_status: dict[str, int] = {row[0]: row[1] for row in status_rows}
     counts = FilterCounts(
         all=sum(by_status.values()),
         open=by_status.get("detected", 0) + by_status.get("returned", 0),
@@ -347,17 +425,24 @@ async def review_queue(
         .group_by(CardEvent.card_id)
         .subquery()
     )
-    total = (await db.execute(
-        select(func.count()).select_from(Card).where(Card.status == "on_review")
-    )).scalar_one()
-    cards = (await db.execute(
-        select(Card)
-        .join(sent, sent.c.card_id == Card.id)
-        .where(Card.status == "on_review")
-        .options(*_CARD_OPTIONS)
-        .order_by(sent.c.sent_at.asc(), Card.number.asc())
-        .limit(REVIEW_QUEUE_LIMIT)
-    )).unique().scalars().all()
+    total = (
+        await db.execute(select(func.count()).select_from(Card).where(Card.status == "on_review"))
+    ).scalar_one()
+    cards = (
+        (
+            await db.execute(
+                select(Card)
+                .join(sent, sent.c.card_id == Card.id)
+                .where(Card.status == "on_review")
+                .options(*_CARD_OPTIONS)
+                .order_by(sent.c.sent_at.asc(), Card.number.asc())
+                .limit(REVIEW_QUEUE_LIMIT)
+            )
+        )
+        .unique()
+        .scalars()
+        .all()
+    )
     return ReviewQueueOut(items=[_detail(c, user) for c in cards], total=total)
 
 
@@ -368,7 +453,9 @@ async def get_card(
     user: User = Depends(get_current_user),
 ):
     await _get_visible(db, card_id, user)
-    return _detail(await _load_full(db, card_id), user)
+    full = await _load_full(db, card_id)
+    assert full is not None
+    return _detail(full, user)
 
 
 @router.post("/{card_id}/photos", response_model=PhotoOut, status_code=201)
@@ -385,8 +472,9 @@ async def upload_photo(
     intended_attempt = _after_attempt(card)
     # Закрываем читающую транзакцию до приёма файла: загрузка по мобильной
     # связи идёт десятки секунд, соединение с БД не должно всё это время
-    # висеть «idle in transaction».
-    await db.commit()
+    # висеть «idle in transaction». close() вместо commit(): фиксировать здесь
+    # нечего, а коммит молча записал бы чужие незакоммиченные изменения.
+    await db.close()
 
     stored = await save_photo(file, kind)
     try:
@@ -405,14 +493,21 @@ async def upload_photo(
             # попытку сюда не попадает — у неё попытка та же.
             if _after_attempt(card) != intended_attempt:
                 raise HTTPException(
-                    409, "Пока фото загружалось, префектура уже вынесла решение по карточке — откройте её заново",
+                    409,
+                    "Пока фото загружалось, префектура уже вынесла решение "
+                    "по карточке — откройте её заново",
                 )
             if card.status in ("detected", "returned"):
                 card.current_attempt += 1
                 card.status = "on_review"
-                db.add(CardEvent(
-                    card_id=card.id, kind="after_uploaded", attempt=card.current_attempt, user_id=user.id,
-                ))
+                db.add(
+                    CardEvent(
+                        card_id=card.id,
+                        kind="after_uploaded",
+                        attempt=card.current_attempt,
+                        user_id=user.id,
+                    )
+                )
             attempt = card.current_attempt
         card.updated_at = func.now()
         photo = CardPhoto(
@@ -426,18 +521,29 @@ async def upload_photo(
         )
         db.add(photo)
         await db.flush()
-        log_action(db, user.id, "photo_upload", "card", card.id,
-                   {"kind": kind, "attempt": attempt, "photo_id": str(photo.id)}, client_ip(request))
+        log_action(
+            db,
+            user.id,
+            "photo_upload",
+            "card",
+            card.id,
+            {"kind": kind, "attempt": attempt, "photo_id": str(photo.id)},
+            client_ip(request),
+        )
         await db.commit()
-    except BaseException:
+    except (Exception, asyncio.CancelledError):
         await db.rollback()
         delete_stored(stored)
         raise
 
-    photo = (await db.execute(
-        select(CardPhoto).where(CardPhoto.id == photo.id).options(joinedload(CardPhoto.uploader))
-        .execution_options(populate_existing=True)
-    )).scalar_one()
+    photo = (
+        await db.execute(
+            select(CardPhoto)
+            .where(CardPhoto.id == photo.id)
+            .options(joinedload(CardPhoto.uploader))
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
     return _photo_out(photo)
 
 
@@ -455,11 +561,27 @@ async def accept_card(
     card.accepted_at = func.now()
     card.accepted_by = user.id
     card.updated_at = func.now()
-    db.add(CardEvent(card_id=card.id, kind="accepted", attempt=card.current_attempt, user_id=user.id))
-    log_action(db, user.id, "card_accept", "card", card.id,
-               {"attempt": card.current_attempt}, client_ip(request))
+    db.add(
+        CardEvent(
+            card_id=card.id,
+            kind="accepted",
+            attempt=card.current_attempt,
+            user_id=user.id,
+        )
+    )
+    log_action(
+        db,
+        user.id,
+        "card_accept",
+        "card",
+        card.id,
+        {"attempt": card.current_attempt},
+        client_ip(request),
+    )
     await db.commit()
-    return _detail(await _load_full(db, card_id), user)
+    full = await _load_full(db, card_id)
+    assert full is not None
+    return _detail(full, user)
 
 
 @router.post("/{card_id}/return", response_model=CardDetail)
@@ -475,11 +597,25 @@ async def return_card(
         raise HTTPException(409, "Карточка не на проверке — возможно, решение уже принято")
     card.status = "returned"
     card.updated_at = func.now()
-    db.add(CardEvent(
-        card_id=card.id, kind="returned", attempt=card.current_attempt,
-        comment=data.comment, user_id=user.id,
-    ))
-    log_action(db, user.id, "card_return", "card", card.id,
-               {"attempt": card.current_attempt, "comment": data.comment}, client_ip(request))
+    db.add(
+        CardEvent(
+            card_id=card.id,
+            kind="returned",
+            attempt=card.current_attempt,
+            comment=data.comment,
+            user_id=user.id,
+        )
+    )
+    log_action(
+        db,
+        user.id,
+        "card_return",
+        "card",
+        card.id,
+        {"attempt": card.current_attempt, "comment": data.comment},
+        client_ip(request),
+    )
     await db.commit()
-    return _detail(await _load_full(db, card_id), user)
+    full_returned = await _load_full(db, card_id)
+    assert full_returned is not None
+    return _detail(full_returned, user)

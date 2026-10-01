@@ -1,5 +1,6 @@
 """Свод по люкам: таблица по всем районам — только префектуре; подробный
 свод по району — сотрудникам этого района и префектуре."""
+
 from datetime import date
 from urllib.parse import quote
 from uuid import UUID
@@ -12,7 +13,11 @@ from app.database import get_db
 from app.models import UNKNOWN_DISTRICT_NAME, District, User
 from app.schemas import DistrictSummaryOut, PeriodOut, PlaceFilter, SummaryOut
 from app.services import access
-from app.services.district_summary import build_district_summary, district_summary_xlsx, district_xlsx_title
+from app.services.district_summary import (
+    build_district_summary,
+    district_summary_xlsx,
+    district_xlsx_title,
+)
 from app.services.periods import Period, resolve_period
 from app.services.security import get_current_user
 from app.services.summary import build_summary, summary_xlsx
@@ -29,7 +34,11 @@ async def okrug_summary_user(user: User = Depends(get_current_user)) -> User:
 
 
 def _xlsx_response(
-    content: bytes, title: str, ascii_name: str, period: Period | PeriodOut, place: PlaceFilter,
+    content: bytes,
+    title: str,
+    ascii_name: str,
+    period: Period | PeriodOut,
+    place: PlaceFilter,
 ) -> Response:
     if place != "all":
         title = f"{title} ({PLACE_LABELS[place]})"
@@ -38,7 +47,9 @@ def _xlsx_response(
         content=content,
         media_type=XLSX_MEDIA_TYPE,
         headers={
-            "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}",
+            "Content-Disposition": (
+                f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
+            ),
         },
     )
 
@@ -70,7 +81,12 @@ async def get_summary_xlsx(
 
 
 async def _district_summary(
-    db: AsyncSession, user: User, district_id: UUID | None, period: str, date_from: date | None, date_to: date | None,
+    db: AsyncSession,
+    user: User,
+    district_id: UUID | None,
+    period: str,
+    date_from: date | None,
+    date_to: date | None,
     place: PlaceFilter,
 ) -> DistrictSummaryOut:
     target = access.resolve_summary_district(user, district_id)
@@ -107,5 +123,9 @@ async def get_district_summary_xlsx(
     summary = await _district_summary(db, user, district_id, period, date_from, date_to, place)
     content = await run_in_threadpool(district_summary_xlsx, summary)
     return _xlsx_response(
-        content, district_xlsx_title(summary.district.name), "luki-sao-svod-rayona.xlsx", summary.period, place,
+        content,
+        district_xlsx_title(summary.district.name),
+        "luki-sao-svod-rayona.xlsx",
+        summary.period,
+        place,
     )

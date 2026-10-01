@@ -143,7 +143,12 @@ async def test_place_filter_in_journal_and_summaries(client, jj, admin):
 
 
 async def test_reload_updates_deactivates_and_skips_unchanged(client):
-    from app.database import async_session
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.database import get_engine
+
+    def async_session():
+        return AsyncSession(get_engine(), expire_on_commit=False)
 
     original = gzip.compress(json.dumps(territories_dataset(), ensure_ascii=False).encode())
     changed = territories_dataset()

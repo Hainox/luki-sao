@@ -1,4 +1,5 @@
 """Pydantic-схемы API."""
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -194,6 +195,7 @@ class ReviewQueueOut(BaseModel):
 
 # ── Свод ────────────────────────────────────────────────────────
 
+
 class SummaryRow(BaseModel):
     district_id: UUID | None
     district_name: str
@@ -213,6 +215,7 @@ class SummaryOut(BaseModel):
 
 class DistrictSummaryTotals(BaseModel):
     """По карточкам, созданным в периоде; статус — текущий."""
+
     detected: int
     accepted: int
     on_review: int

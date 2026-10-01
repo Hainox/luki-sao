@@ -96,8 +96,23 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 `deploy/scripts/backup.sh` — дамп БД и архив фото в `/opt/luki-sao/backups`.
 Дампы хранятся 14 дней, архив фото — только последний (он дублирует каталог
-1:1); для хранения вне сервера копируйте их наружу. Если места на диске
-мало, архив фото пропускается с сообщением в логе — дамп БД снимается всегда.
+1:1). Если места на диске мало, архив фото пропускается с сообщением в логе —
+дамп БД снимается всегда. Пустой дамп (< 1 КБ) считается сбоем: скрипт удаляет
+его и выходит с ошибкой, чтобы cron-лог это показал.
+
+Пароль БД скрипт читает из `.env` (`POSTGRES_PASSWORD` → `PGPASSWORD`):
+раньше его не было, и `pg_dump` падал с `password authentication failed`,
+оставляя пустые дампы.
+
+Оффсайт и шифрование — через `.env` (см. `.env.example`):
+- `BACKUP_RSYNC_DEST` — куда rsync заливает свежие архивы сразу после снятия;
+  без него копии только на этом диске;
+- `BACKUP_GPG_RECIPIENT` — keyid gpg-ключа для шифрования дампа БД
+  (открытый текст после шифрования удаляется).
+
+Свежесть бэкапа: скрипт трогает `backups/.last_backup_ok` и предупреждает в
+лог, если предыдущий успешный бэкап старше 26 часов. Проверка со стороны
+мониторинга: `find /opt/luki-sao/backups -maxdepth 1 -name 'db_*.sql.gz' -mmin -1560 | grep -q .`.
 
 Ночной запуск (через полчаса после бэкапа журнала обходов в 02:00):
 ```bash
@@ -107,9 +122,15 @@ docker compose -f docker-compose.prod.yml up -d --build
 Восстановление (на пустую БД после первой установки):
 ```bash
 cd /opt/luki-sao
+set -a; . ./.env; set +a
 gunzip -c backups/db_ГГГГММДД_ччммсс.sql.gz | \
-  docker compose -f docker-compose.prod.yml exec -T luki-db psql -U postgres luki_sao
+  docker compose -f docker-compose.prod.yml exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" \
+    luki-db psql -U postgres luki_sao
 tar -xzf backups/uploads_ГГГГММДД_ччммсс.tar.gz -C data
+# Если дамп зашифрован (db_*.sql.gz.gpg):
+# gpg --decrypt backups/db_ГГГГММДД_ччммсс.sql.gz.gpg | gunzip -c | \
+#   docker compose -f docker-compose.prod.yml exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" \
+#     luki-db psql -U postgres luki_sao
 ```
 
 ## 5. Если что-то не так

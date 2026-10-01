@@ -1,4 +1,5 @@
 """Вход через журнал обходов и данные текущего пользователя."""
+
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -15,7 +16,13 @@ from app.schemas import LoginRequest, TokenResponse, UserOut
 from app.services import jirajura
 from app.services.access import can_create
 from app.services.audit import log_action
-from app.services.security import client_ip, create_access_token, get_current_user
+from app.services.security import (
+    check_login_rate_limit,
+    client_ip,
+    create_access_token,
+    get_current_user,
+    revoke_token,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,9 +36,9 @@ KNOWN_ROLES = {"inspector", "reviewer", "admin"}
 async def user_out(db: AsyncSession, user: User) -> UserOut:
     district_name = None
     if user.district_id is not None:
-        district_name = (await db.execute(
-            select(District.name).where(District.id == user.district_id)
-        )).scalar_one_or_none()
+        district_name = (
+            await db.execute(select(District.name).where(District.id == user.district_id))
+        ).scalar_one_or_none()
     return UserOut(
         id=user.id,
         login=user.login,
@@ -83,11 +90,25 @@ async def login(
     client: httpx.AsyncClient = Depends(jirajura.get_jirajura_client),
 ):
     ip = client_ip(request)
+    retry_after = check_login_rate_limit(ip)
+    if retry_after is not None:
+        raise HTTPException(
+            429,
+            "Слишком много попыток входа — попробуйте через минуту",
+            headers={"Retry-After": str(retry_after)},
+        )
     try:
         result = await jirajura.login(client, data.login, data.password, ip)
     except jirajura.JiraJuraError as exc:
-        log_action(db, None, "login_failed", "auth", None,
-                   {"login": data.login.lower(), "status": exc.status_code}, ip)
+        log_action(
+            db,
+            None,
+            "login_failed",
+            "auth",
+            None,
+            {"login": data.login.lower(), "status": exc.status_code},
+            ip,
+        )
         await db.commit()
         raise HTTPException(exc.status_code, exc.detail, headers=exc.headers or None)
 
@@ -98,7 +119,15 @@ async def login(
         raise HTTPException(502, jirajura.DEFAULT_UNAVAILABLE)
 
     if result.must_change_password:
-        log_action(db, user_id, "login_must_change_password", "auth", user_id, {"login": data.login.lower()}, ip)
+        log_action(
+            db,
+            user_id,
+            "login_must_change_password",
+            "auth",
+            user_id,
+            {"login": data.login.lower()},
+            ip,
+        )
         await db.commit()
         raise HTTPException(403, MUST_CHANGE_PASSWORD_MESSAGE)
 
@@ -132,3 +161,18 @@ async def login(
 @router.get("/me", response_model=UserOut)
 async def me(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     return await user_out(db, user)
+
+
+@router.post("/logout", status_code=204)
+async def logout(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    auth = request.headers.get("authorization", "")
+    token = auth.removeprefix("Bearer ").strip() if auth.lower().startswith("bearer ") else ""
+    if token:
+        await revoke_token(token, db)
+        log_action(db, user.id, "logout", "auth", user.id, None, client_ip(request))
+        await db.commit()
+    return None

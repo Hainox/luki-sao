@@ -34,9 +34,11 @@ function ReloginForm({ kind, user }: { kind: 'expired' | 'expiring'; user: User 
   const [pending, setPending] = useState(false)
 
   const leave = () => {
-    logout()
-    queryClient.clear()
-    navigate('/login', { replace: true })
+    void authApi.logout().catch(() => {}).finally(() => {
+      logout()
+      queryClient.clear()
+      navigate('/login', { replace: true })
+    })
   }
 
   const submit = async (e: React.FormEvent) => {

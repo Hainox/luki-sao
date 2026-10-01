@@ -1,0 +1,5 @@
+# Shell-скрипты деплоя выполняются в Linux-контейнерах/WSL: им нужен LF.
+# Без этого core.autocrlf=true на Windows превращает их в CRLF, и bash
+# падает с «syntax error: unexpected end of file».
+deploy/scripts/*.sh text eol=lf
+backend/docker-entrypoint.sh text eol=lf

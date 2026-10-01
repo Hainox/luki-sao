@@ -95,11 +95,11 @@ async def load_dataset(db: AsyncSession, raw: bytes, *, force: bool = False) -> 
 
 
 async def _main(path: Path) -> None:
-    from app.database import async_session, engine
+    from app.database import dispose_engine, get_engine
 
-    async with async_session() as db:
+    async with AsyncSession(get_engine(), expire_on_commit=False) as db:
         print(await load_dataset(db, path.read_bytes()))
-    await engine.dispose()
+    await dispose_engine()
 
 
 if __name__ == "__main__":

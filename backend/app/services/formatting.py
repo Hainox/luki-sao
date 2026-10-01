@@ -1,4 +1,5 @@
 """Форматирование чисел и номеров так, как их видит пользователь."""
+
 from decimal import ROUND_HALF_UP, Decimal
 
 CARD_PREFIX = "ОЛХ"

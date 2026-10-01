@@ -4,6 +4,7 @@ Revision ID: 0001_initial
 Revises:
 Create Date: 2026-09-30
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -60,7 +61,9 @@ def upgrade() -> None:
         )
     """)
     op.execute("ALTER SEQUENCE card_number_seq OWNED BY cards.number")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_cards_district_created ON cards (district_id, created_at)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_cards_district_created ON cards (district_id, created_at)"
+    )
     op.execute("CREATE INDEX IF NOT EXISTS ix_cards_created_at ON cards (created_at)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_cards_status ON cards (status)")
 
@@ -78,7 +81,9 @@ def upgrade() -> None:
             CHECK ((kind = 'before' AND attempt = 0) OR (kind = 'after' AND attempt >= 1))
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_card_photos_card ON card_photos (card_id, kind, attempt)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_card_photos_card ON card_photos (card_id, kind, attempt)"
+    )
 
     op.execute("""
         CREATE TABLE IF NOT EXISTS card_events (
@@ -92,7 +97,9 @@ def upgrade() -> None:
             created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_card_events_card ON card_events (card_id, created_at)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_card_events_card ON card_events (card_id, created_at)"
+    )
 
     op.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
