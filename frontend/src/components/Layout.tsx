@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BarChart3, ClipboardCheck, Images, LogOut } from 'lucide-react'
+import { BarChart3, CircleHelp, ClipboardCheck, Images, LogOut } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cardsApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -28,6 +29,7 @@ function useNavItems(): NavItem[] {
   const items: NavItem[] = [{ to: '/', label: 'Фотожурнал', icon: Images, end: true }]
   if (isPrefecture) items.push({ to: '/review', label: 'Проверка', icon: ClipboardCheck, badge: queue?.total })
   items.push({ to: '/summary', label: 'Свод', icon: BarChart3 })
+  items.push({ to: '/help', label: 'Помощь', icon: CircleHelp })
   return items
 }
 
@@ -40,7 +42,9 @@ function Badge({ value }: { value?: number }) {
   )
 }
 
-export default function Layout() {
+/** children — для страниц вне маршрутов с входом (Помощь открывается и без
+ *  него); обычные разделы приходят через Outlet. */
+export default function Layout({ children }: { children?: ReactNode }) {
   const items = useNavItems()
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
@@ -115,7 +119,7 @@ export default function Layout() {
         </header>
 
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-4 md:px-8 md:pb-10 md:pt-8">
-          <Outlet />
+          {children ?? <Outlet />}
         </main>
 
         {/* Нижняя навигация — только на телефоне */}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, LogIn } from 'lucide-react'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { CircleHelp, Eye, EyeOff, LogIn } from 'lucide-react'
 import { ApiError, authApi, describeError } from '@/lib/api'
 import { HatchMark } from '@/components/HatchMark'
 import { useAuthStore } from '@/stores/auth'
@@ -104,6 +104,10 @@ export default function LoginPage() {
           <LogIn className="h-5 w-5" aria-hidden />
           {pending ? 'Входим…' : 'Войти'}
         </button>
+        <Link to="/help?topic=vhod" className="mt-3 flex min-h-11 items-center justify-center gap-1.5 text-sm font-semibold text-brand-600 hover:underline">
+          <CircleHelp className="h-4 w-4" aria-hidden />
+          Не получается войти? Помощь
+        </Link>
       </form>
     </div>
   )
