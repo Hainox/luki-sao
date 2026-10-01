@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -200,6 +201,16 @@ def _after_attempt(card: Card) -> int:
     return card.current_attempt
 
 
+async def _find_card(db: AsyncSession, card_id: UUID) -> Card | None:
+    return await db.get(Card, card_id)
+
+
+async def _repeated_create(db: AsyncSession, existing: Card, user: User) -> CardDetail:
+    if existing.created_by != user.id:
+        raise HTTPException(409, "Карточка с таким идентификатором уже создана другим сотрудником")
+    return _detail(await _load_full(db, existing.id), user)
+
+
 # ── Эндпоинты ───────────────────────────────────────────────────
 
 @router.post("", response_model=CardDetail, status_code=201)
@@ -225,11 +236,9 @@ async def create_card(
         raise HTTPException(422, "Район не найден — войдите заново, чтобы обновить список районов")
 
     if data.id is not None:
-        existing = await db.get(Card, data.id)
+        existing = await _find_card(db, data.id)
         if existing is not None:
-            if existing.created_by != user.id:
-                raise HTTPException(409, "Карточка с таким идентификатором уже создана другим сотрудником")
-            return _detail(await _load_full(db, existing.id), user)
+            return await _repeated_create(db, existing, user)
 
     card = Card(
         district_id=district_id,
@@ -241,8 +250,18 @@ async def create_card(
     )
     if data.id is not None:
         card.id = data.id
-    db.add(card)
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            db.add(card)
+            await db.flush()
+    except IntegrityError:
+        # Повтор с тем же id пришёл, пока первый запрос ещё не закоммичен:
+        # проверка выше его не увидела, вставка дождалась коммита и упёрлась
+        # в первичный ключ. Теперь карточка видна — отвечаем как на повтор.
+        existing = await _find_card(db, data.id) if data.id is not None else None
+        if existing is None:
+            raise
+        return await _repeated_create(db, existing, user)
     await db.refresh(card)
     db.add(CardEvent(card_id=card.id, kind="created", user_id=user.id))
     log_action(db, user.id, "card_create", "card", card.id,
