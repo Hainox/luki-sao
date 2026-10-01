@@ -68,11 +68,13 @@ function DynamicsSection({ data }: { data: DistrictSummaryData }) {
 function DynamicsItem({ bucket: b }: { bucket: DynamicsBucket }) {
   return (
     <li className="flex flex-col gap-1.5 px-4 py-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <span className="font-bold">{b.label}</span>
-        <span className="text-sm text-slate-600">
-          Выявлено: <b className="text-slate-900">{b.detected}</b> · Исправлено:{' '}
-          <b className="text-emerald-700">{b.accepted}</b>
+      <div className="font-bold">{b.label}</div>
+      <div className="flex flex-wrap gap-x-3 text-sm text-slate-600">
+        <span>
+          Выявлено: <b className="text-slate-900">{b.detected}</b>
+        </span>
+        <span>
+          Исправлено: <b className="text-emerald-700">{b.accepted}</b>
         </span>
       </div>
       <PercentBar fixed={b.accepted} detected={b.detected} name={b.label} />
@@ -195,8 +197,10 @@ export function DistrictSummary({ districtId, showBack = false }: { districtId?:
         </div>
       )}
 
-      {data && <DynamicsSection data={data} />}
+      {/* Сначала то, что ждёт работы района: динамика за месяц — это 30
+          строк, и на телефоне список давних нарушений уезжал бы далеко вниз. */}
       {data && <OldestOpenSection cards={data.oldest_open} />}
+      {data && <DynamicsSection data={data} />}
 
       <div className="flex flex-col gap-1 text-sm text-slate-500">
         <p>{FOOTNOTE}</p>
