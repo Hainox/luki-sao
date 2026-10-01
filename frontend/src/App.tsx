@@ -6,6 +6,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import CardDetailPage from '@/pages/CardDetailPage'
+import DistrictSummaryPage from '@/pages/DistrictSummaryPage'
 import JournalPage from '@/pages/JournalPage'
 import LoginPage from '@/pages/LoginPage'
 import NewCardPage from '@/pages/NewCardPage'
@@ -61,6 +62,7 @@ export default function App() {
             }
           />
           <Route path="summary" element={<SummaryPage />} />
+          <Route path="summary/:districtId" element={<DistrictSummaryPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

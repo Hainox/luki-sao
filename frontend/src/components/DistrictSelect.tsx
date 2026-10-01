@@ -10,7 +10,7 @@ interface Props {
 }
 
 /** Сотрудник района закреплён за своим районом — ему показываем его район
- *  без выбора; префектуре и проверяющим округа — выбор с «Все районы». */
+ *  без выбора; префектуре — выбор с «Все районы». */
 export function DistrictSelect({ user, value, onChange }: Props) {
   const pinned = !user.is_prefecture && user.district_id
   const { data: districts = [] } = useQuery({

@@ -44,3 +44,10 @@ export function formatPercent(fixed: number, detected: number): string {
   const text = value.toFixed(1).replace('.', ',')
   return `${text.endsWith(',0') ? text.slice(0, -2) : text}%`
 }
+
+/** Среднее время до приёмки: «2,5 дн.», «3 дн.»; прочерк — если принятых нет. */
+export function formatDays(value: number | null): string {
+  if (value === null) return '—'
+  const text = value.toFixed(1).replace('.', ',')
+  return `${text.endsWith(',0') ? text.slice(0, -2) : text} дн.`
+}

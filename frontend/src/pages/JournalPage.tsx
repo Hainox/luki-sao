@@ -5,6 +5,7 @@ import { cardsApi, describeError, districtsApi } from '@/lib/api'
 import { CardRow } from '@/components/CardRow'
 import { DistrictSelect } from '@/components/DistrictSelect'
 import { FilterChips } from '@/components/FilterChips'
+import { NoDistrictNotice } from '@/components/NoDistrictNotice'
 import { FILTERS } from '@/lib/filters'
 import { PeriodSelector } from '@/components/PeriodSelector'
 import { formatPercent } from '@/lib/format'
@@ -56,18 +57,12 @@ function SummaryStrip({ districtName, counts }: { districtName: string; counts?:
 }
 
 function CreateButton({ user }: { user: User }) {
-  if (user.can_create_cards) {
-    return (
-      <Link to="/cards/new" className="btn-primary w-full md:w-auto">
-        <Plus className="h-5 w-5" aria-hidden />
-        Зафиксировать нарушение
-      </Link>
-    )
-  }
+  if (!user.can_create_cards) return null
   return (
-    <div className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
-      В журнале обходов вам не назначен район — фиксировать нарушения нельзя, доступен только просмотр.
-    </div>
+    <Link to="/cards/new" className="btn-primary w-full md:w-auto">
+      <Plus className="h-5 w-5" aria-hidden />
+      Зафиксировать нарушение
+    </Link>
   )
 }
 
@@ -109,17 +104,7 @@ export default function JournalPage() {
     ? (user.district_name ?? '—')
     : (districts.find((d) => d.id === districtId)?.name ?? 'Все районы')
 
-  if (noJournal) {
-    return (
-      <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Фотожурнал</h1>
-        <div role="alert" className="card p-6 text-slate-700">
-          В журнале обходов вам не назначен район — фотожурнал недоступен. Обратитесь к администратору журнала
-          обходов. Свод по люкам открыт в разделе «Свод».
-        </div>
-      </div>
-    )
-  }
+  if (noJournal) return <NoDistrictNotice title="Фотожурнал" />
 
   return (
     <div className="flex flex-col gap-4">

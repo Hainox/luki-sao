@@ -4,7 +4,7 @@ import { BarChart3, ClipboardCheck, Images, LogOut } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cardsApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
-import { roleLabel } from '@/lib/roles'
+import { hasNoJournal, roleLabel } from '@/lib/roles'
 import { HatchMark } from '@/components/HatchMark'
 import { ReloginDialog } from '@/components/ReloginDialog'
 
@@ -25,6 +25,9 @@ function useNavItems(): NavItem[] {
     enabled: isPrefecture,
     refetchInterval: 60_000,
   })
+  // Без района ни журнала, ни свода нет — на главной только объяснение,
+  // куда обратиться (см. NoDistrictNotice).
+  if (!user || hasNoJournal(user)) return []
   const items: NavItem[] = [{ to: '/', label: 'Фотожурнал', icon: Images, end: true }]
   if (isPrefecture) items.push({ to: '/review', label: 'Проверка', icon: ClipboardCheck, badge: queue?.total })
   items.push({ to: '/summary', label: 'Свод', icon: BarChart3 })
@@ -119,33 +122,35 @@ export default function Layout() {
         </main>
 
         {/* Нижняя навигация — только на телефоне */}
-        <nav
-          className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-brand-700 text-white md:hidden"
-          aria-label="Разделы"
-        >
-          <div className="flex">
-            {items.map(({ to, label, icon: Icon, end, badge }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) =>
-                  `relative flex min-h-16 flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold ${
-                    isActive ? 'bg-brand-600 text-white' : 'text-white/75'
-                  }`
-                }
-              >
-                <Icon className="h-6 w-6" aria-hidden />
-                <span>{label}</span>
-                {badge ? (
-                  <span className="absolute right-[calc(50%-26px)] top-1.5 min-w-5 rounded-full bg-amber-400 px-1 text-center text-[11px] font-bold leading-5 text-amber-950">
-                    {badge > 99 ? '99+' : badge}
-                  </span>
-                ) : null}
-              </NavLink>
-            ))}
-          </div>
-        </nav>
+        {items.length > 0 && (
+          <nav
+            className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-brand-700 text-white md:hidden"
+            aria-label="Разделы"
+          >
+            <div className="flex">
+              {items.map(({ to, label, icon: Icon, end, badge }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  className={({ isActive }) =>
+                    `relative flex min-h-16 flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold ${
+                      isActive ? 'bg-brand-600 text-white' : 'text-white/75'
+                    }`
+                  }
+                >
+                  <Icon className="h-6 w-6" aria-hidden />
+                  <span>{label}</span>
+                  {badge ? (
+                    <span className="absolute right-[calc(50%-26px)] top-1.5 min-w-5 rounded-full bg-amber-400 px-1 text-center text-[11px] font-bold leading-5 text-amber-950">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  ) : null}
+                </NavLink>
+              ))}
+            </div>
+          </nav>
+        )}
       </div>
 
       <ReloginDialog />
