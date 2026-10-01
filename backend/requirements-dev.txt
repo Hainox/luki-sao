@@ -1,7 +1,7 @@
 -r requirements.txt
-psycopg2-binary==2.9.12  # только для тестового хелпера conftest (синхронные SQL)
-pip-audit==2.9.0
-pytest==8.3.4
-pytest-asyncio==0.25.2
-ruff==0.14.13
-mypy==1.18.2
+psycopg2-binary==2.9.13  # только для тестового хелпера conftest (синхронные SQL)
+pip-audit==2.10.1
+pytest==9.1.1
+pytest-asyncio==1.4.0
+ruff==0.16.9
+mypy==2.3.1
