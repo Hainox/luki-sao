@@ -1,7 +1,14 @@
 """Вход через журнал обходов (подделан MockTransport'ом)."""
+
 import httpx
 
-from tests.conftest import DISTRICT_IDS, SAO_DISTRICTS, UNKNOWN_DISTRICT_ID, login_as, run_sql
+from tests.conftest import (
+    DISTRICT_IDS,
+    SAO_DISTRICTS,
+    UNKNOWN_DISTRICT_ID,
+    login_as,
+    run_sql,
+)
 
 
 async def test_admin_login_issues_own_token_and_syncs_districts(client, jj):
@@ -55,7 +62,8 @@ async def test_bad_password_relays_jirajura_message(client, jj):
 async def test_rate_limit_relays_status_message_and_retry_after(client, jj):
     jj.add_user("inspector1")
     jj.login_response = httpx.Response(
-        429, json={"detail": "Слишком много попыток входа — попробуйте позже"},
+        429,
+        json={"detail": "Слишком много попыток входа — попробуйте позже"},
         headers={"Retry-After": "900"},
     )
     r = await client.post("/api/auth/login", json={"login": "inspector1", "password": "secret123"})
@@ -132,7 +140,9 @@ async def test_reviewer_without_district_cannot_create(client, jj):
     assert me["is_prefecture"] is False
     assert me["can_create_cards"] is False
     # Проверяющий округа видит в журнале обходов все районы — они и синхронизируются.
-    assert run_sql("SELECT count(*) FROM districts WHERE id = %s", (UNKNOWN_DISTRICT_ID,))[0][0] == 1
+    assert (
+        run_sql("SELECT count(*) FROM districts WHERE id = %s", (UNKNOWN_DISTRICT_ID,))[0][0] == 1
+    )
 
 
 async def test_client_ip_falls_back_to_peer_address(client, jj):

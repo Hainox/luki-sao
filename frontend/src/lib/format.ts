@@ -20,9 +20,16 @@ export function formatDate(iso: string): string {
   return dateFmt.format(new Date(iso))
 }
 
-/** YYYY-MM-DD → ДД.ММ.ГГГГ без участия часовых поясов. */
+/** YYYY-MM-DD → ДД.ММ.ГГГГ без участия часовых поясов. Невалидный ввод
+ *  возвращаем как есть, а не «undefined.undefined.» — сервер всё равно
+ *  отклонит его своей валидацией периода. */
 export function formatIsoDate(isoDate: string): string {
-  const [y, m, d] = isoDate.split('-')
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim())
+  if (!match) return isoDate
+  const [, y, m, d] = match
+  const month = Number(m)
+  const day = Number(d)
+  if (month < 1 || month > 12 || day < 1 || day > 31) return isoDate
   return `${d}.${m}.${y}`
 }
 

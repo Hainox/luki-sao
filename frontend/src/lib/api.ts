@@ -17,10 +17,10 @@ import type {
 import { TOKEN_KEY, useAuthStore, waitForRelogin } from '@/stores/auth'
 import { rememberServerTime } from '@/lib/session'
 
-const BASE_URL = '/api'
-const DEFAULT_TIMEOUT_MS = 30_000
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 30_000
 // Фото уходят по мобильной связи из поля — 30 секунд там часто мало.
-export const PHOTO_UPLOAD_TIMEOUT_MS = 90_000
+export const PHOTO_UPLOAD_TIMEOUT_MS = Number(import.meta.env.VITE_PHOTO_UPLOAD_TIMEOUT_MS) || 90_000
 
 type Params = Record<string, string | number | boolean | null | undefined>
 
@@ -177,6 +177,7 @@ export const authApi = {
   login: (login: string, password: string) =>
     request<LoginResponse>('POST', '/auth/login', { login, password }, { anonymous: true }),
   me: () => request<User>('GET', '/auth/me'),
+  logout: () => request<void>('POST', '/auth/logout'),
 }
 
 export const districtsApi = {

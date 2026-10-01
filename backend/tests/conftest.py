@@ -1,10 +1,8 @@
 """Инфраструктура тестов: отдельная одноразовая БД (создаётся и мигрируется
 один раз на сессию), клиент приложения через ASGITransport и поддельный
 журнал обходов на httpx.MockTransport — в сеть тесты не ходят.
-
-DATABASE_URL/UPLOAD_DIR выставляются до первого `import app...`: engine и
-каталог загрузок создаются при импорте модулей.
 """
+
 import io
 import json
 import os
@@ -13,6 +11,8 @@ import sys
 import tempfile
 import uuid
 from pathlib import Path
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key-0123456789abcdef")
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TEST_DB_URL = os.environ.get(
@@ -35,9 +35,22 @@ SYNC_DB_URL = TEST_DB_URL.replace("postgresql+asyncpg://", "postgresql://")
 
 # 16 районов САО + служебный «Неизвестный район», как в журнале обходов.
 SAO_DISTRICTS = [
-    "Аэропорт", "Беговой", "Бескудниковский", "Войковский", "Восточное Дегунино",
-    "Головинский", "Дмитровский", "Западное Дегунино", "Коптево", "Левобережный",
-    "Молжаниновский", "Савёловский", "Сокол", "Тимирязевский", "Ховрино", "Хорошёвский",
+    "Аэропорт",
+    "Беговой",
+    "Бескудниковский",
+    "Войковский",
+    "Восточное Дегунино",
+    "Головинский",
+    "Дмитровский",
+    "Западное Дегунино",
+    "Коптево",
+    "Левобережный",
+    "Молжаниновский",
+    "Савёловский",
+    "Сокол",
+    "Тимирязевский",
+    "Ховрино",
+    "Хорошёвский",
 ]
 DISTRICT_IDS = {name: str(uuid.uuid5(uuid.NAMESPACE_URL, f"sao/{name}")) for name in SAO_DISTRICTS}
 UNKNOWN_DISTRICT_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "sao/unknown"))
@@ -46,8 +59,11 @@ UNKNOWN_DISTRICT_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "sao/unknown"))
 def _admin_sql(sql: str) -> None:
     url = make_url(TEST_DB_URL)
     conn = psycopg2.connect(
-        host=url.host, port=url.port or 5432, user=url.username,
-        password=url.password, dbname="postgres",
+        host=url.host,
+        port=url.port or 5432,
+        user=url.username,
+        password=url.password,
+        dbname="postgres",
     )
     conn.autocommit = True
     try:
@@ -77,7 +93,9 @@ def _prepare_test_database():
     env["DATABASE_URL"] = TEST_DB_URL
     subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=str(BACKEND_DIR), env=env, check=True,
+        cwd=str(BACKEND_DIR),
+        env=env,
+        check=True,
     )
     yield
 
@@ -105,9 +123,15 @@ class FakeJiraJura:
         self.districts_fail = False
         self.down = False
 
-    def add_user(self, login: str, role: str = "inspector", district: str | None = "Аэропорт",
-                 password: str = "secret123", must_change: bool = False,
-                 full_name: str | None = None) -> dict:
+    def add_user(
+        self,
+        login: str,
+        role: str = "inspector",
+        district: str | None = "Аэропорт",
+        password: str = "secret123",
+        must_change: bool = False,
+        full_name: str | None = None,
+    ) -> dict:
         user = {
             "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"user/{login}")),
             "login": login,
@@ -117,7 +141,11 @@ class FakeJiraJura:
             "phone": None,
             "is_developer": False,
         }
-        self.users[login.lower()] = {"password": password, "user": user, "must_change": must_change}
+        self.users[login.lower()] = {
+            "password": password,
+            "user": user,
+            "must_change": must_change,
+        }
         return user
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -133,11 +161,14 @@ class FakeJiraJura:
                 return httpx.Response(401, json={"detail": "Неверный логин или пароль"})
             token = f"jj-{uuid.uuid4().hex}"
             self.tokens[token] = entry
-            return httpx.Response(200, json={
-                "access_token": token,
-                "user": entry["user"],
-                "must_change_password": entry["must_change"],
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": token,
+                    "user": entry["user"],
+                    "must_change_password": entry["must_change"],
+                },
+            )
         if request.method == "GET" and request.url.path == "/api/v1/districts/":
             if self.districts_fail:
                 return httpx.Response(500, json={"detail": "Internal Server Error"})
@@ -148,7 +179,9 @@ class FakeJiraJura:
             role = entry["user"]["role"]
             district_id = entry["user"]["district_id"]
             if role == "inspector":
-                visible = [d for d in self.districts if d["id"] == district_id] if district_id else []
+                visible = (
+                    [d for d in self.districts if d["id"] == district_id] if district_id else []
+                )
             elif role == "reviewer" and district_id:
                 visible = [d for d in self.districts if d["id"] == district_id]
             else:
@@ -168,7 +201,11 @@ def jj() -> FakeJiraJura:
 @pytest_asyncio.fixture
 async def client(jj: FakeJiraJura):
     from app.main import app
+    from app.services import security
     from app.services.jirajura import get_jirajura_client
+
+    security.reset_login_rate_limit()
+    security.reset_proxy_networks_cache()
 
     async def _fake_client():
         async with httpx.AsyncClient(
@@ -182,12 +219,18 @@ async def client(jj: FakeJiraJura):
         yield ac
     app.dependency_overrides.clear()
     # Пул asyncpg привязан к event loop'у теста — у каждого теста свой loop.
-    from app.database import engine
-    await engine.dispose()
+    from app.database import dispose_engine
+
+    await dispose_engine()
 
 
-async def login_as(client: httpx.AsyncClient, jj: FakeJiraJura, login: str, role: str = "inspector",
-                   district: str | None = "Аэропорт") -> dict[str, str]:
+async def login_as(
+    client: httpx.AsyncClient,
+    jj: FakeJiraJura,
+    login: str,
+    role: str = "inspector",
+    district: str | None = "Аэропорт",
+) -> dict[str, str]:
     if login.lower() not in jj.users:
         jj.add_user(login, role=role, district=district)
     r = await client.post("/api/auth/login", json={"login": login, "password": "secret123"})
@@ -214,8 +257,13 @@ def image_bytes(fmt: str = "JPEG", size: tuple[int, int] = (64, 48), color=(200,
     return _JPEG_CACHE[key]
 
 
-async def create_card(client, headers, district: str | None = None, address: str = "ул. Усиевича, д. 10",
-                      **extra) -> dict:
+async def create_card(
+    client,
+    headers,
+    district: str | None = None,
+    address: str = "ул. Усиевича, д. 10",
+    **extra,
+) -> dict:
     payload = {"address": address, **extra}
     if district:
         payload["district_id"] = DISTRICT_IDS[district]
@@ -224,12 +272,24 @@ async def create_card(client, headers, district: str | None = None, address: str
     return r.json()
 
 
-async def upload(client, headers, card_id: str, kind: str, filename: str = "photo.jpg",
-                 content: bytes | None = None) -> httpx.Response:
+async def upload(
+    client,
+    headers,
+    card_id: str,
+    kind: str,
+    filename: str = "photo.jpg",
+    content: bytes | None = None,
+) -> httpx.Response:
     return await client.post(
         f"/api/cards/{card_id}/photos",
         params={"kind": kind},
-        files={"file": (filename, content if content is not None else image_bytes(), "image/jpeg")},
+        files={
+            "file": (
+                filename,
+                content if content is not None else image_bytes(),
+                "image/jpeg",
+            )
+        },
         headers=headers,
     )
 

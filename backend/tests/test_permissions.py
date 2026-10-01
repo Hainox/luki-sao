@@ -1,4 +1,5 @@
 """Права: сотрудник района — только свой район, решения — только префектура."""
+
 from tests.conftest import DISTRICT_IDS, create_card, login_as, upload
 
 
@@ -20,15 +21,19 @@ async def test_district_staff_journal_is_scoped_to_own_district(client, jj, admi
     # Префектура видит всё и может фильтровать по району.
     everything = (await client.get("/api/cards", headers=admin)).json()
     assert everything["counts"]["all"] == 2
-    only_sokol = (await client.get("/api/cards", params={"district_id": DISTRICT_IDS["Сокол"]},
-                                   headers=admin)).json()
+    only_sokol = (
+        await client.get("/api/cards", params={"district_id": DISTRICT_IDS["Сокол"]}, headers=admin)
+    ).json()
     assert [c["id"] for c in only_sokol["items"]] == [sokol_card["id"]]
 
 
 async def test_card_is_created_only_in_own_district(client, jj, admin):
     aero = await login_as(client, jj, "inspector1", district="Аэропорт")
-    r = await client.post("/api/cards", json={"address": "ул. Зорге, 1", "district_id": DISTRICT_IDS["Сокол"]},
-                          headers=aero)
+    r = await client.post(
+        "/api/cards",
+        json={"address": "ул. Зорге, 1", "district_id": DISTRICT_IDS["Сокол"]},
+        headers=aero,
+    )
     assert r.status_code == 403
     card = await create_card(client, aero)
     assert card["district_id"] == DISTRICT_IDS["Аэропорт"]
@@ -38,7 +43,9 @@ async def test_card_is_created_only_in_own_district(client, jj, admin):
 
 async def test_after_photo_only_by_card_district_or_prefecture(client, jj, admin):
     aero = await login_as(client, jj, "inspector1", district="Аэропорт")
-    aero_reviewer = await login_as(client, jj, "aero_reviewer", role="reviewer", district="Аэропорт")
+    aero_reviewer = await login_as(
+        client, jj, "aero_reviewer", role="reviewer", district="Аэропорт"
+    )
     sokol = await login_as(client, jj, "inspector2", district="Сокол")
     card = await create_card(client, aero)
 
@@ -70,8 +77,12 @@ async def test_only_prefecture_accepts_and_returns(client, jj, admin):
     await upload(client, aero, card["id"], "after")
 
     for headers in (aero, reviewer):
-        assert (await client.post(f"/api/cards/{card['id']}/accept", headers=headers)).status_code == 403
-        r = await client.post(f"/api/cards/{card['id']}/return", json={"comment": "нет"}, headers=headers)
+        assert (
+            await client.post(f"/api/cards/{card['id']}/accept", headers=headers)
+        ).status_code == 403
+        r = await client.post(
+            f"/api/cards/{card['id']}/return", json={"comment": "нет"}, headers=headers
+        )
         assert r.status_code == 403
         assert (await client.get("/api/cards/review-queue", headers=headers)).status_code == 403
         detail = (await client.get(f"/api/cards/{card['id']}", headers=headers)).json()
@@ -113,7 +124,9 @@ async def test_inspector_without_district_sees_no_journal(client, jj, admin):
     r = await client.get("/api/cards", headers=orphan)
     assert r.status_code == 403
     assert "не назначен район" in r.json()["detail"]
-    r = await client.get("/api/cards", params={"district_id": DISTRICT_IDS["Аэропорт"]}, headers=orphan)
+    r = await client.get(
+        "/api/cards", params={"district_id": DISTRICT_IDS["Аэропорт"]}, headers=orphan
+    )
     assert r.status_code == 403
     assert (await client.get(f"/api/cards/{card['id']}", headers=orphan)).status_code == 403
     assert (await upload(client, orphan, card["id"], "after")).status_code == 403

@@ -19,7 +19,7 @@ name: luki-sao
 
 services:
   luki-db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     environment:
       POSTGRES_DB: luki_sao
       POSTGRES_USER: postgres
@@ -47,6 +47,8 @@ services:
       MAX_PHOTO_SIZE_MB: ${MAX_PHOTO_SIZE_MB:-20}
       CORS_ORIGINS: https://${DOMAIN:-luki.obhod-sao.ru}
       UPLOAD_DIR: /app/uploads
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
     volumes:
       - ./data/uploads:/app/uploads
     depends_on:

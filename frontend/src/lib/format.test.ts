@@ -38,6 +38,14 @@ describe('даты', () => {
   it('переводит ISO-дату без сдвига поясов', () => {
     expect(formatIsoDate('2026-09-05')).toBe('05.09.2026')
   })
+
+  it('невалидный ввод возвращает как есть, а не undefined', () => {
+    expect(formatIsoDate('')).toBe('')
+    expect(formatIsoDate('не дата')).toBe('не дата')
+    expect(formatIsoDate('2026-13-01')).toBe('2026-13-01')
+    expect(formatIsoDate('2026-09-99')).toBe('2026-09-99')
+    expect(formatIsoDate(' 2026-09-05 ')).toBe('05.09.2026')
+  })
 })
 
 describe('formatDays', () => {

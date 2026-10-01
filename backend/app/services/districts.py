@@ -1,4 +1,5 @@
 """Районы округа (снимок из журнала обходов)."""
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
