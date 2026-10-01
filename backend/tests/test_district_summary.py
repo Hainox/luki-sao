@@ -428,8 +428,10 @@ async def test_district_xlsx_empty_and_formula_injection_safe(client, jj, admin)
     # Новые карточки начинаются с названия объекта справочника, а у карточек,
     # заведённых до него, адрес — свободный текст сотрудника.
     legacy = await create_card(client, aero)
-    run_sql("UPDATE cards SET address = %s, place_kind = NULL, territory_id = NULL WHERE id = %s",
-            ('=HYPERLINK("http://evil.test","x")', legacy["id"]))
+    run_sql(
+        "UPDATE cards SET address = %s, place_kind = NULL, territory_id = NULL WHERE id = %s",
+        ('=HYPERLINK("http://evil.test","x")', legacy["id"]),
+    )
     r = await client.get("/api/summary/district.xlsx", headers=aero)
     assert r.status_code == 200
     ws = load_workbook(BytesIO(r.content)).active

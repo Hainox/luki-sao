@@ -1,15 +1,16 @@
 """Справочник ДТ и ОДХ из реестра АСУ ОДС; место люка в карточке
 
-Revision ID: 0002_territories
-Revises: 0001_initial
+Revision ID: 0003_territories
+Revises: 0002_token_blocklist
 Create Date: 2026-10-01
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "0002_territories"
-down_revision: Union[str, None] = "0001_initial"
+revision: str = "0003_territories"
+down_revision: Union[str, None] = "0002_token_blocklist"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -42,7 +43,10 @@ def upgrade() -> None:
             UNIQUE (kind, registry_id)
         )
     """)
-    op.execute("CREATE INDEX IF NOT EXISTS ix_territories_district_keys ON territories USING GIN (district_keys)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_territories_district_keys "
+        "ON territories USING GIN (district_keys)"
+    )
 
     op.execute("""
         CREATE TABLE IF NOT EXISTS dataset_versions (

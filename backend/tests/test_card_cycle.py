@@ -160,7 +160,9 @@ async def test_decisions_only_for_cards_on_review(client, jj, admin):
 
 
 async def test_admin_creates_card_in_chosen_district(client, jj, admin):
-    r = await client.post("/api/cards", json={**place("Сокол"), "address_note": "ул. Зорге, 1"}, headers=admin)
+    r = await client.post(
+        "/api/cards", json={**place("Сокол"), "address_note": "ул. Зорге, 1"}, headers=admin
+    )
     assert r.status_code == 422
     assert r.json()["detail"] == "Выберите район"
     card = await create_card(client, admin, district="Сокол")

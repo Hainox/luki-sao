@@ -13,6 +13,7 @@
 API загружает файл сам при старте (app/load_territories.py), если он
 поменялся.
 """
+
 import argparse
 import gzip
 import io
@@ -31,10 +32,16 @@ OUTSIDE_DISTRICTS = "вне границ районов САО"
 
 def _read_sources(src: Path) -> dict[str, dict]:
     if src.is_dir():
-        return {kind: json.loads((src / name).read_text(encoding="utf-8")) for kind, name in SOURCES.items()}
+        return {
+            kind: json.loads((src / name).read_text(encoding="utf-8"))
+            for kind, name in SOURCES.items()
+        }
     with zipfile.ZipFile(src) as zf:
         by_base = {Path(n).name: n for n in zf.namelist()}
-        return {kind: json.loads(zf.read(by_base[name]).decode("utf-8")) for kind, name in SOURCES.items()}
+        return {
+            kind: json.loads(zf.read(by_base[name]).decode("utf-8"))
+            for kind, name in SOURCES.items()
+        }
 
 
 def _simplify(points: list[list[float]], lat0: float) -> list[list[float]]:
@@ -53,7 +60,11 @@ def _simplify(points: list[list[float]], lat0: float) -> list[list[float]]:
         best, best_i = -1.0, -1
         for i in range(a + 1, b):
             px, py = xy[i]
-            d = (abs(dy * px - dx * py + bx * ay - by * ax) / seg) if seg else math.hypot(px - ax, py - ay)
+            d = (
+                (abs(dy * px - dx * py + bx * ay - by * ax) / seg)
+                if seg
+                else math.hypot(px - ax, py - ay)
+            )
             if d > best:
                 best, best_i = d, i
         if best > TOLERANCE_M:
@@ -103,24 +114,32 @@ def build(src: Path, source_date: str) -> dict:
             props = feature["properties"]
             if not feature.get("geometry"):
                 continue
-            items.append({
-                "kind": kind,
-                "registry_id": str(props["ID объекта"]),
-                "short_id": str(props.get("ID (короткий)") or ""),
-                "name": _name(props, kind),
-                "districts": _districts(props, kind),
-                "owner": props.get("Балансодержатель") if kind == "dt" else props.get("Заказчик"),
-                "category": props.get("Категория объекта благоустройства") if kind == "dt" else props.get("Категория уборки"),
-                "area_m2": props.get("Площадь, кв.м"),
-                "passport_url": props.get("Ссылка на паспорт"),
-                "polygons": _polygons(feature["geometry"]),
-            })
+            items.append(
+                {
+                    "kind": kind,
+                    "registry_id": str(props["ID объекта"]),
+                    "short_id": str(props.get("ID (короткий)") or ""),
+                    "name": _name(props, kind),
+                    "districts": _districts(props, kind),
+                    "owner": props.get("Балансодержатель")
+                    if kind == "dt"
+                    else props.get("Заказчик"),
+                    "category": props.get("Категория объекта благоустройства")
+                    if kind == "dt"
+                    else props.get("Категория уборки"),
+                    "area_m2": props.get("Площадь, кв.м"),
+                    "passport_url": props.get("Ссылка на паспорт"),
+                    "polygons": _polygons(feature["geometry"]),
+                }
+            )
     items.sort(key=lambda i: (i["kind"], i["registry_id"]))
     return {"source": "reestr-ogh.mos.ru, САО", "source_date": source_date, "items": items}
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("src", type=Path)
     p.add_argument("--date", required=True, help="дата выгрузки, YYYY-MM-DD")
     args = p.parse_args()
@@ -133,7 +152,8 @@ def main() -> None:
         gz.write(raw)
     OUT.write_bytes(buf.getvalue())
     kinds = {k: sum(1 for i in dataset["items"] if i["kind"] == k) for k in SOURCES}
-    print(f"{OUT}: ДТ {kinds['dt']}, ОДХ {kinds['odh']}, {len(raw) / 1e6:.1f} МБ → {OUT.stat().st_size / 1e6:.1f} МБ gzip", file=sys.stderr)
+    size = f"{len(raw) / 1e6:.1f} МБ → {OUT.stat().st_size / 1e6:.1f} МБ gzip"
+    print(f"{OUT}: ДТ {kinds['dt']}, ОДХ {kinds['odh']}, {size}", file=sys.stderr)
 
 
 if __name__ == "__main__":

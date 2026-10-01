@@ -1,4 +1,5 @@
 """Справочник ДТ и ОДХ для выбора места люка при фиксации нарушения."""
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,8 +17,12 @@ router = APIRouter()
 
 def _out(t: Territory) -> dict:
     return {
-        "id": t.id, "kind": t.kind, "name": t.name, "owner": t.owner,
-        "category": t.category, "passport_url": t.passport_url,
+        "id": t.id,
+        "kind": t.kind,
+        "name": t.name,
+        "owner": t.owner,
+        "category": t.category,
+        "passport_url": t.passport_url,
     }
 
 

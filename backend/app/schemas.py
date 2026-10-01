@@ -69,7 +69,9 @@ class CardCreate(BaseModel):
     place_kind: PlaceKind
     territory_id: UUID
     # Уточнение к объекту («у подъезда 2»), необязательно.
-    address_note: Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] | None = None
+    address_note: (
+        Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] | None
+    ) = None
     lat: Decimal | None = Field(default=None, ge=-90, le=90, max_digits=9, decimal_places=6)
     lon: Decimal | None = Field(default=None, ge=-180, le=180, max_digits=9, decimal_places=6)
     comment: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None

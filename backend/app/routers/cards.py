@@ -27,6 +27,7 @@ from app.schemas import (
     PersonOut,
     PhotoOut,
     PlaceFilter,
+    PlaceKind,
     ReturnRequest,
     ReviewQueueOut,
     TerritoryOut,
@@ -72,7 +73,12 @@ def _territory_out(t: Territory | None) -> TerritoryOut | None:
     if t is None:
         return None
     return TerritoryOut(
-        id=t.id, kind=t.kind, name=t.name, owner=t.owner, category=t.category, passport_url=t.passport_url,
+        id=t.id,
+        kind=cast(PlaceKind, t.kind),
+        name=t.name,
+        owner=t.owner,
+        category=t.category,
+        passport_url=t.passport_url,
     )
 
 

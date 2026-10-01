@@ -2,6 +2,7 @@
 один раз на сессию), клиент приложения через ASGITransport и поддельный
 журнал обходов на httpx.MockTransport — в сеть тесты не ходят.
 """
+
 import gzip
 import io
 import json
@@ -57,7 +58,9 @@ UNKNOWN_DISTRICT_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "sao/unknown"))
 
 
 def _square(lat: float, lon: float, size: float = 0.001) -> list:
-    return [[[[lon, lat], [lon + size, lat], [lon + size, lat + size], [lon, lat + size], [lon, lat]]]]
+    return [
+        [[[lon, lat], [lon + size, lat], [lon + size, lat + size], [lon, lat + size], [lon, lat]]]
+    ]
 
 
 def district_corner(name: str) -> tuple[float, float]:
@@ -73,14 +76,32 @@ def territories_dataset() -> dict:
     for name in SAO_DISTRICTS:
         lat, lon = district_corner(name)
         registry_name = name.replace("ё", "е")
-        items.append({"kind": "dt", "registry_id": f"dt-{name}", "name": f"Двор района {name}",
-                      "districts": [registry_name], "owner": f"Жилищник {name}", "category": "3 категория",
-                      "area_m2": 1000, "passport_url": f"https://reestr-ogh.mos.ru/ogh/dt-{name}",
-                      "polygons": _square(lat, lon)})
-        items.append({"kind": "odh", "registry_id": f"odh-{name}", "name": f"Улица района {name}",
-                      "districts": [registry_name], "owner": "АвД САО", "category": "4 категория",
-                      "area_m2": 5000, "passport_url": f"https://reestr-ogh.mos.ru/ogh/odh-{name}",
-                      "polygons": _square(lat, lon + 0.002)})
+        items.append(
+            {
+                "kind": "dt",
+                "registry_id": f"dt-{name}",
+                "name": f"Двор района {name}",
+                "districts": [registry_name],
+                "owner": f"Жилищник {name}",
+                "category": "3 категория",
+                "area_m2": 1000,
+                "passport_url": f"https://reestr-ogh.mos.ru/ogh/dt-{name}",
+                "polygons": _square(lat, lon),
+            }
+        )
+        items.append(
+            {
+                "kind": "odh",
+                "registry_id": f"odh-{name}",
+                "name": f"Улица района {name}",
+                "districts": [registry_name],
+                "owner": "АвД САО",
+                "category": "4 категория",
+                "area_m2": 5000,
+                "passport_url": f"https://reestr-ogh.mos.ru/ogh/odh-{name}",
+                "polygons": _square(lat, lon + 0.002),
+            }
+        )
     return {"source": "test", "source_date": "2026-10-01", "items": items}
 
 
@@ -129,10 +150,14 @@ def _prepare_test_database():
         check=True,
     )
     dataset_path = Path(tempfile.mkdtemp(prefix="luki-territories-")) / "territories.json.gz"
-    dataset_path.write_bytes(gzip.compress(json.dumps(territories_dataset(), ensure_ascii=False).encode()))
+    dataset_path.write_bytes(
+        gzip.compress(json.dumps(territories_dataset(), ensure_ascii=False).encode())
+    )
     subprocess.run(
         [sys.executable, "-m", "app.load_territories", str(dataset_path)],
-        cwd=str(BACKEND_DIR), env=env, check=True,
+        cwd=str(BACKEND_DIR),
+        env=env,
+        check=True,
     )
     for tid, registry_id in run_sql("SELECT id, registry_id FROM territories"):
         kind, name = registry_id.split("-", 1)

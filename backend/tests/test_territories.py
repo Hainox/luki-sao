@@ -1,5 +1,6 @@
 """Справочник ДТ/ОДХ: выбор места люка, подсказка «рядом с вами», фильтр
 «Все / ДТ / ОДХ» в журнале и сводах."""
+
 import gzip
 import json
 from io import BytesIO
@@ -9,9 +10,16 @@ from urllib.parse import quote
 from openpyxl import load_workbook
 
 from app.load_territories import DEFAULT_PATH, load_dataset
-from app.services.territories import district_key, distance_m
+from app.services.territories import distance_m, district_key
 from tests.conftest import (
-    DISTRICT_IDS, SAO_DISTRICTS, TERRITORY_IDS, create_card, district_corner, login_as, place, run_sql,
+    DISTRICT_IDS,
+    SAO_DISTRICTS,
+    TERRITORY_IDS,
+    create_card,
+    district_corner,
+    login_as,
+    place,
+    run_sql,
     territories_dataset,
 )
 
@@ -21,16 +29,21 @@ async def test_district_staff_get_own_dt_and_odh(client, jj, admin):
     r = await client.get("/api/territories", headers=aero)
     assert r.status_code == 200
     assert [(t["kind"], t["name"]) for t in r.json()] == [
-        ("dt", "Двор района Аэропорт"), ("odh", "Улица района Аэропорт"),
+        ("dt", "Двор района Аэропорт"),
+        ("odh", "Улица района Аэропорт"),
     ]
     assert r.json()[0]["owner"] == "Жилищник Аэропорт"
 
-    r = await client.get("/api/territories", params={"district_id": DISTRICT_IDS["Сокол"]}, headers=aero)
+    r = await client.get(
+        "/api/territories", params={"district_id": DISTRICT_IDS["Сокол"]}, headers=aero
+    )
     assert r.status_code == 403
 
     r = await client.get("/api/territories", headers=admin)
     assert r.status_code == 422
-    r = await client.get("/api/territories", params={"district_id": DISTRICT_IDS["Сокол"]}, headers=admin)
+    r = await client.get(
+        "/api/territories", params={"district_id": DISTRICT_IDS["Сокол"]}, headers=admin
+    )
     assert [t["name"] for t in r.json()] == ["Двор района Сокол", "Улица района Сокол"]
 
     orphan = await login_as(client, jj, "orphan", district=None)
@@ -88,17 +101,26 @@ async def test_card_stores_place_and_rejects_mismatches(client, jj, admin):
     assert r.status_code == 422
     assert r.json()["detail"] == "«Двор района Сокол» относится к другому району"
 
-    r = await client.post("/api/cards", json={**place("Сокол"), "district_id": DISTRICT_IDS["Аэропорт"]},
-                          headers=admin)
+    r = await client.post(
+        "/api/cards",
+        json={**place("Сокол"), "district_id": DISTRICT_IDS["Аэропорт"]},
+        headers=admin,
+    )
     assert r.status_code == 422
 
-    run_sql("UPDATE territories SET is_active = FALSE WHERE id = %s", (TERRITORY_IDS[("Аэропорт", "dt")],))
+    run_sql(
+        "UPDATE territories SET is_active = FALSE WHERE id = %s",
+        (TERRITORY_IDS[("Аэропорт", "dt")],),
+    )
     try:
         r = await client.post("/api/cards", json=place("Аэропорт"), headers=aero)
         assert r.status_code == 422
         assert "не найден в справочнике" in r.json()["detail"]
     finally:
-        run_sql("UPDATE territories SET is_active = TRUE WHERE id = %s", (TERRITORY_IDS[("Аэропорт", "dt")],))
+        run_sql(
+            "UPDATE territories SET is_active = TRUE WHERE id = %s",
+            (TERRITORY_IDS[("Аэропорт", "dt")],),
+        )
 
 
 async def test_place_filter_in_journal_and_summaries(client, jj, admin):
@@ -107,12 +129,16 @@ async def test_place_filter_in_journal_and_summaries(client, jj, admin):
     await create_card(client, aero, kind="dt")
     odh = await create_card(client, aero, kind="odh")
     legacy = await create_card(client, aero)
-    run_sql("UPDATE cards SET place_kind = NULL, territory_id = NULL WHERE id = %s", (legacy["id"],))
+    run_sql(
+        "UPDATE cards SET place_kind = NULL, territory_id = NULL WHERE id = %s", (legacy["id"],)
+    )
 
     r = (await client.get("/api/cards", params={"place": "odh"}, headers=aero)).json()
     assert [c["id"] for c in r["items"]] == [odh["id"]]
     assert r["counts"]["all"] == 1
-    assert (await client.get("/api/cards", params={"place": "dt"}, headers=aero)).json()["counts"]["all"] == 2
+    assert (await client.get("/api/cards", params={"place": "dt"}, headers=aero)).json()["counts"][
+        "all"
+    ] == 2
     assert (await client.get("/api/cards", headers=aero)).json()["counts"]["all"] == 4
 
     def aero_row(summary):
@@ -124,7 +150,9 @@ async def test_place_filter_in_journal_and_summaries(client, jj, admin):
     assert aero_row(summary)["detected"] == 2
     assert summary["total"]["detected"] == 2
 
-    district = (await client.get("/api/summary/district", params={"place": "odh"}, headers=aero)).json()
+    district = (
+        await client.get("/api/summary/district", params={"place": "odh"}, headers=aero)
+    ).json()
     assert district["place"] == "odh"
     assert district["totals"]["detected"] == 1
     assert [c["id"] for c in district["oldest_open"]] == [odh["id"]]
@@ -139,7 +167,9 @@ async def test_place_filter_in_journal_and_summaries(client, jj, admin):
     rows = [row[0] for row in load_workbook(BytesIO(r.content)).active.iter_rows(values_only=True)]
     assert "Где найдены: только дворовые территории (ДТ)" in rows
 
-    assert (await client.get("/api/cards", params={"place": "lyuk"}, headers=aero)).status_code == 422
+    assert (
+        await client.get("/api/cards", params={"place": "lyuk"}, headers=aero)
+    ).status_code == 422
 
 
 async def test_reload_updates_deactivates_and_skips_unchanged(client):
@@ -156,12 +186,16 @@ async def test_reload_updates_deactivates_and_skips_unchanged(client):
     changed["items"][0]["name"] = "Двор района Аэропорт (новая версия паспорта)"
     try:
         async with async_session() as db:
-            message = await load_dataset(db, gzip.compress(json.dumps(changed, ensure_ascii=False).encode()))
+            message = await load_dataset(
+                db, gzip.compress(json.dumps(changed, ensure_ascii=False).encode())
+            )
         assert "ДТ 16, ОДХ 15" in message
         rows = dict(run_sql("SELECT registry_id, is_active FROM territories"))
         assert rows["odh-Сокол"] is False
         assert rows["odh-Аэропорт"] is True
-        name = run_sql("SELECT name FROM territories WHERE id = %s", (TERRITORY_IDS[("Аэропорт", "dt")],))
+        name = run_sql(
+            "SELECT name FROM territories WHERE id = %s", (TERRITORY_IDS[("Аэропорт", "dt")],)
+        )
         assert name == [("Двор района Аэропорт (новая версия паспорта)",)]
     finally:
         async with async_session() as db:
@@ -173,7 +207,13 @@ async def test_reload_updates_deactivates_and_skips_unchanged(client):
 
 def test_distance_respects_holes():
     outer = [[37.0, 55.0], [37.01, 55.0], [37.01, 55.01], [37.0, 55.01], [37.0, 55.0]]
-    hole = [[37.004, 55.004], [37.006, 55.004], [37.006, 55.006], [37.004, 55.006], [37.004, 55.004]]
+    hole = [
+        [37.004, 55.004],
+        [37.006, 55.004],
+        [37.006, 55.006],
+        [37.004, 55.006],
+        [37.004, 55.004],
+    ]
     assert distance_m([[outer, hole]], 55.002, 37.002) == 0
     # Центр дыры — во дворе внутри ОДХ-кольца, до края дыры ~63 м по долготе.
     assert 60 < distance_m([[outer, hole]], 55.005, 37.005) < 70
@@ -185,7 +225,11 @@ def test_shipped_dataset_covers_every_district():
     assert sum(i["kind"] == "dt" for i in items) == 2131
     assert sum(i["kind"] == "odh" for i in items) == 689
     for name in SAO_DISTRICTS:
-        kinds = {i["kind"] for i in items if district_key(name) in {district_key(d) for d in i["districts"]}}
+        kinds = {
+            i["kind"]
+            for i in items
+            if district_key(name) in {district_key(d) for d in i["districts"]}
+        }
         assert kinds == {"dt", "odh"}, name
     assert all(len(ring) >= 4 for i in items for polygon in i["polygons"] for ring in polygon)
     assert not any(i["name"].startswith("ДТ\\") for i in items)

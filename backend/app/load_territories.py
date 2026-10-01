@@ -7,6 +7,7 @@
 
     python -m app.load_territories [путь к файлу]
 """
+
 import asyncio
 import gzip
 import hashlib
@@ -57,9 +58,11 @@ def _row(item: dict) -> dict:
 
 async def load_dataset(db: AsyncSession, raw: bytes, *, force: bool = False) -> str:
     sha = hashlib.sha256(raw).hexdigest()
-    current = (await db.execute(
-        text("SELECT sha256 FROM dataset_versions WHERE name = :name"), {"name": DATASET_NAME}
-    )).scalar_one_or_none()
+    current = (
+        await db.execute(
+            text("SELECT sha256 FROM dataset_versions WHERE name = :name"), {"name": DATASET_NAME}
+        )
+    ).scalar_one_or_none()
     if current == sha and not force:
         return "Справочник ДТ/ОДХ не менялся"
 
@@ -70,22 +73,34 @@ async def load_dataset(db: AsyncSession, raw: bytes, *, force: bool = False) -> 
     # так что пустого справочника никто не увидит.
     await db.execute(update(Territory).where(Territory.is_active).values(is_active=False))
     for start in range(0, len(rows), BATCH_SIZE):
-        batch = rows[start:start + BATCH_SIZE]
+        batch = rows[start : start + BATCH_SIZE]
         stmt = insert(Territory).values(batch)
-        await db.execute(stmt.on_conflict_do_update(
-            index_elements=[Territory.kind, Territory.registry_id],
-            set_={
-                col: getattr(stmt.excluded, col)
-                for col in batch[0] if col not in ("kind", "registry_id")
-            } | {"updated_at": func.now()},
-        ))
-    await db.execute(text("""
+        await db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[Territory.kind, Territory.registry_id],
+                set_={
+                    col: getattr(stmt.excluded, col)
+                    for col in batch[0]
+                    if col not in ("kind", "registry_id")
+                }
+                | {"updated_at": func.now()},
+            )
+        )
+    await db.execute(
+        text("""
         INSERT INTO dataset_versions (name, sha256, source_date, items, loaded_at)
         VALUES (:name, :sha, :source_date, :items, now())
         ON CONFLICT (name) DO UPDATE
         SET sha256 = EXCLUDED.sha256, source_date = EXCLUDED.source_date,
             items = EXCLUDED.items, loaded_at = now()
-    """), {"name": DATASET_NAME, "sha": sha, "source_date": dataset.get("source_date"), "items": len(rows)})
+    """),
+        {
+            "name": DATASET_NAME,
+            "sha": sha,
+            "source_date": dataset.get("source_date"),
+            "items": len(rows),
+        },
+    )
     await db.commit()
     kinds = {k: sum(1 for r in rows if r["kind"] == k) for k in ("dt", "odh")}
     return (

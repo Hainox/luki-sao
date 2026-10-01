@@ -65,6 +65,7 @@ class User(Base):
 
 class Territory(Base):
     """Объект реестра АСУ ОДС (ДТ или ОДХ), см. app/load_territories.py."""
+
     __tablename__ = "territories"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -74,8 +75,12 @@ class Territory(Base):
     registry_id: Mapped[str] = mapped_column(Text, nullable=False)
     short_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    district_names: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
-    district_keys: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default=text("'{}'"))
+    district_names: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
+    district_keys: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("'{}'")
+    )
     owner: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str | None] = mapped_column(Text, nullable=True)
     area_m2: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)

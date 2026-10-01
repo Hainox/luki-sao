@@ -5,6 +5,7 @@ PostGIS в базе нет — для пары тысяч объектов он 
 расстояние до контура считается здесь, в локальной плоской проекции (на
 сотнях метров её ошибка — сантиметры).
 """
+
 import math
 from uuid import UUID
 
@@ -52,7 +53,9 @@ def distance_m(polygons: list, lat: float, lon: float) -> float:
     kx = _M_PER_DEG_LON_EQUATOR * math.cos(math.radians(lat))
     best = math.inf
     for polygon in polygons:
-        rings = [[((p[0] - lon) * kx, (p[1] - lat) * _M_PER_DEG_LAT) for p in ring] for ring in polygon]
+        rings = [
+            [((p[0] - lon) * kx, (p[1] - lat) * _M_PER_DEG_LAT) for p in ring] for ring in polygon
+        ]
         if sum(_ring_contains(ring, 0.0, 0.0) for ring in rings) % 2 == 1:
             return 0.0
         for ring in rings:
@@ -62,42 +65,62 @@ def distance_m(polygons: list, lat: float, lon: float) -> float:
 
 
 async def district_territories(db: AsyncSession, district: District) -> list[Territory]:
-    return list((await db.execute(
-        select(Territory)
-        .where(Territory.is_active, Territory.district_keys.any(district_key(district.name)))
-        .order_by(Territory.kind, Territory.name)
-    )).scalars().all())
+    return list(
+        (
+            await db.execute(
+                select(Territory)
+                .where(
+                    Territory.is_active,
+                    Territory.district_keys.contains([district_key(district.name)]),
+                )
+                .order_by(Territory.kind, Territory.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
 
 async def nearby_territories(
-    db: AsyncSession, district: District, lat: float, lon: float, radius_m: float = NEARBY_RADIUS_M,
+    db: AsyncSession,
+    district: District,
+    lat: float,
+    lon: float,
+    radius_m: float = NEARBY_RADIUS_M,
 ) -> list[tuple[Territory, float]]:
     dlat = radius_m / _M_PER_DEG_LAT
     dlon = radius_m / (_M_PER_DEG_LON_EQUATOR * math.cos(math.radians(lat)))
-    candidates = (await db.execute(
-        select(Territory).where(
-            Territory.is_active,
-            Territory.district_keys.any(district_key(district.name)),
-            Territory.max_lat >= lat - dlat,
-            Territory.min_lat <= lat + dlat,
-            Territory.max_lon >= lon - dlon,
-            Territory.min_lon <= lon + dlon,
+    candidates = (
+        (
+            await db.execute(
+                select(Territory).where(
+                    Territory.is_active,
+                    Territory.district_keys.contains([district_key(district.name)]),
+                    Territory.max_lat >= lat - dlat,
+                    Territory.min_lat <= lat + dlat,
+                    Territory.max_lon >= lon - dlon,
+                    Territory.min_lon <= lon + dlon,
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     found = [(t, distance_m(t.polygons, lat, lon)) for t in candidates]
     found = [(t, d) for t, d in found if d <= radius_m]
     found.sort(key=lambda item: (item[1], item[0].name))
     return found[:NEARBY_LIMIT]
 
 
-async def territory_for_card(db: AsyncSession, territory_id: UUID, place_kind: str, district: District) -> Territory:
+async def territory_for_card(
+    db: AsyncSession, territory_id: UUID, place_kind: str, district: District
+) -> Territory:
     territory = await db.get(Territory, territory_id)
     if territory is None or not territory.is_active:
         raise HTTPException(422, "Объект не найден в справочнике ДТ и ОДХ — выберите его заново")
     if territory.kind != place_kind:
-        raise HTTPException(
-            422, f"«{territory.name}» — это {PLACE_LABELS[territory.kind]}, а выбрано {PLACE_LABELS[place_kind]}",
-        )
+        actual, chosen = PLACE_LABELS[territory.kind], PLACE_LABELS[place_kind]
+        raise HTTPException(422, f"«{territory.name}» — это {actual}, а выбрано {chosen}")
     if district_key(district.name) not in territory.district_keys:
         raise HTTPException(422, f"«{territory.name}» относится к другому району")
     return territory
