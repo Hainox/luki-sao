@@ -7,6 +7,7 @@ import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import CardDetailPage from '@/pages/CardDetailPage'
 import DistrictSummaryPage from '@/pages/DistrictSummaryPage'
+import HelpRoute from '@/pages/HelpPage'
 import JournalPage from '@/pages/JournalPage'
 import LoginPage from '@/pages/LoginPage'
 import NewCardPage from '@/pages/NewCardPage'
@@ -43,6 +44,7 @@ export default function App() {
     <ErrorBoundary>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/help" element={<HelpRoute />} />
         <Route
           element={
             <RequireAuth>
