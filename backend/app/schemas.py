@@ -189,6 +189,7 @@ class SummaryOut(BaseModel):
 
 class DistrictSummaryTotals(BaseModel):
     """По карточкам, созданным в периоде; статус — текущий."""
+
     detected: int
     accepted: int
     on_review: int

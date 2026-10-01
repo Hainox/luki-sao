@@ -1,21 +1,34 @@
 """Подробный свод по одному району: показатели, динамика, давние нарушения."""
+
 import calendar
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from io import BytesIO
+from typing import Literal, cast
 
 from openpyxl import Workbook
-from sqlalchemy import Date, cast, extract, func, literal_column, select
+from sqlalchemy import Date, extract, func, literal_column, select
+from sqlalchemy import cast as sa_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Card, CardEvent, District
 from app.schemas import (
-    DistrictOut, DistrictSummaryOut, DistrictSummaryTotals, DynamicsBucket, OldestOpenCard, PeriodOut,
+    DistrictOut,
+    DistrictSummaryOut,
+    DistrictSummaryTotals,
+    DynamicsBucket,
+    OldestOpenCard,
+    PeriodOut,
 )
 from app.services.formatting import card_label, percent_label
 from app.services.periods import MSK, Period, msk_today
 from app.services.summary import FOOTNOTE
-from app.services.xlsx_style import safe_append, style_data_row, style_header_row, style_merged_label
+from app.services.xlsx_style import (
+    safe_append,
+    style_data_row,
+    style_header_row,
+    style_merged_label,
+)
 
 OPEN_STATUSES = ("detected", "returned")
 OLDEST_OPEN_LIMIT = 10
@@ -24,8 +37,18 @@ OLDEST_OPEN_LIMIT = 10
 MAX_DAY_BUCKETS = 31
 
 MONTHS = (
-    "январь", "февраль", "март", "апрель", "май", "июнь",
-    "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
+    "январь",
+    "февраль",
+    "март",
+    "апрель",
+    "май",
+    "июнь",
+    "июль",
+    "август",
+    "сентябрь",
+    "октябрь",
+    "ноябрь",
+    "декабрь",
 )
 STATUS_TEXT = {
     "detected": "Выявлено",
@@ -41,7 +64,7 @@ PERIOD_NOTE = (
 # Дата создания по Москве — та же граница суток, что у фильтра периода.
 # Пояс — литералом, а не параметром: с параметром asyncpg отправит в SELECT
 # и в GROUP BY разные $1/$2, и Postgres не признает их одним выражением.
-_MSK_DAY = cast(func.timezone(literal_column("'Europe/Moscow'"), Card.created_at), Date)
+_MSK_DAY = sa_cast(func.timezone(literal_column("'Europe/Moscow'"), Card.created_at), Date)
 
 
 def _period_conds(district_id, period: Period) -> list:
@@ -61,7 +84,10 @@ def _days(seconds) -> float | None:
     return float(days.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
-def dynamics_buckets(start: date, end: date) -> tuple[str, list[tuple[date, date, str]]]:
+DynamicsUnit = Literal["day", "month"]
+
+
+def dynamics_buckets(start: date, end: date) -> tuple[DynamicsUnit, list[tuple[date, date, str]]]:
     """Интервалы динамики [с, по] включительно, обрезанные по границам периода."""
     if (end - start).days + 1 <= MAX_DAY_BUCKETS:
         days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
@@ -76,23 +102,28 @@ def dynamics_buckets(start: date, end: date) -> tuple[str, list[tuple[date, date
 
 
 async def _totals(db: AsyncSession, conds: list) -> DistrictSummaryTotals:
-    row = (await db.execute(
-        select(
-            func.count().label("detected"),
-            func.count().filter(Card.status == "accepted").label("accepted"),
-            func.count().filter(Card.status == "on_review").label("on_review"),
-            func.count().filter(Card.status.in_(OPEN_STATUSES)).label("open"),
-            func.count().filter(Card.status == "returned").label("returned_now"),
-            func.avg(extract("epoch", Card.accepted_at - Card.created_at))
-            .filter(Card.status == "accepted", Card.accepted_at.is_not(None))
-            .label("accept_seconds"),
-        ).where(*conds)
-    )).one()
-    returns_count = (await db.execute(
-        select(func.count()).select_from(CardEvent)
-        .join(Card, Card.id == CardEvent.card_id)
-        .where(CardEvent.kind == "returned", *conds)
-    )).scalar_one()
+    row = (
+        await db.execute(
+            select(
+                func.count().label("detected"),
+                func.count().filter(Card.status == "accepted").label("accepted"),
+                func.count().filter(Card.status == "on_review").label("on_review"),
+                func.count().filter(Card.status.in_(OPEN_STATUSES)).label("open"),
+                func.count().filter(Card.status == "returned").label("returned_now"),
+                func.avg(extract("epoch", Card.accepted_at - Card.created_at))
+                .filter(Card.status == "accepted", Card.accepted_at.is_not(None))
+                .label("accept_seconds"),
+            ).where(*conds)
+        )
+    ).one()
+    returns_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(CardEvent)
+            .join(Card, Card.id == CardEvent.card_id)
+            .where(CardEvent.kind == "returned", *conds)
+        )
+    ).scalar_one()
     return DistrictSummaryTotals(
         detected=row.detected,
         accepted=row.accepted,
@@ -106,15 +137,22 @@ async def _totals(db: AsyncSession, conds: list) -> DistrictSummaryTotals:
 
 
 async def _dynamics(
-    db: AsyncSession, period: Period, conds: list, today: date,
-) -> tuple[str, list[DynamicsBucket]]:
-    per_day = (await db.execute(
-        select(
-            _MSK_DAY.label("day"),
-            func.count().label("detected"),
-            func.count().filter(Card.status == "accepted").label("accepted"),
-        ).where(*conds).group_by(_MSK_DAY)
-    )).all()
+    db: AsyncSession,
+    period: Period,
+    conds: list,
+    today: date,
+) -> tuple[DynamicsUnit, list[DynamicsBucket]]:
+    per_day = (
+        await db.execute(
+            select(
+                _MSK_DAY.label("day"),
+                func.count().label("detected"),
+                func.count().filter(Card.status == "accepted").label("accepted"),
+            )
+            .where(*conds)
+            .group_by(_MSK_DAY)
+        )
+    ).all()
 
     if period.date_from is not None and period.date_to is not None:
         start, end = period.date_from, period.date_to
@@ -137,26 +175,36 @@ async def _dynamics(
             counts[idx][1] += r.accepted
     return unit, [
         DynamicsBucket(
-            label=label, date_from=b_from, date_to=b_to,
-            detected=detected, accepted=accepted, percent_text=percent_label(accepted, detected),
+            label=label,
+            date_from=b_from,
+            date_to=b_to,
+            detected=detected,
+            accepted=accepted,
+            percent_text=percent_label(accepted, detected),
         )
         for (b_from, b_to, label), (detected, accepted) in zip(ranges, counts)
     ]
 
 
 async def _oldest_open(db: AsyncSession, district_id, today: date) -> list[OldestOpenCard]:
-    cards = (await db.execute(
-        select(Card)
-        .where(Card.district_id == district_id, Card.status.in_(OPEN_STATUSES))
-        .order_by(Card.created_at.asc(), Card.number.asc())
-        .limit(OLDEST_OPEN_LIMIT)
-    )).scalars().all()
+    cards = (
+        (
+            await db.execute(
+                select(Card)
+                .where(Card.district_id == district_id, Card.status.in_(OPEN_STATUSES))
+                .order_by(Card.created_at.asc(), Card.number.asc())
+                .limit(OLDEST_OPEN_LIMIT)
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [
         OldestOpenCard(
             id=c.id,
             label=card_label(c.number),
             address=c.address,
-            status=c.status,
+            status=cast(Literal["detected", "on_review", "accepted", "returned"], c.status),
             created_at=c.created_at,
             age_days=max((today - c.created_at.astimezone(MSK).date()).days, 0),
         )
@@ -165,14 +213,19 @@ async def _oldest_open(db: AsyncSession, district_id, today: date) -> list[Oldes
 
 
 async def build_district_summary(
-    db: AsyncSession, district: District, period: Period, now: datetime | None = None,
+    db: AsyncSession,
+    district: District,
+    period: Period,
+    now: datetime | None = None,
 ) -> DistrictSummaryOut:
     today = msk_today(now or datetime.now(timezone.utc))
     conds = _period_conds(district.id, period)
     unit, dynamics = await _dynamics(db, period, conds, today)
     return DistrictSummaryOut(
         district=DistrictOut(id=district.id, name=district.name),
-        period=PeriodOut(kind=period.kind, date_from=period.date_from, date_to=period.date_to, label=period.label),
+        period=PeriodOut(
+            kind=period.kind, date_from=period.date_from, date_to=period.date_to, label=period.label
+        ),
         totals=await _totals(db, conds),
         dynamics_unit=unit,
         dynamics=dynamics,
@@ -233,7 +286,10 @@ def district_summary_xlsx(summary: DistrictSummaryOut) -> bytes:
         ("Не исправлено (выявлено и возвращено)", t.open),
         ("% исправления", t.percent_text),
         ("Возвратов на доработку", t.returns_count),
-        ("Среднее время до приёмки, дней", t.avg_days_to_accept if t.avg_days_to_accept is not None else "—"),
+        (
+            "Среднее время до приёмки, дней",
+            t.avg_days_to_accept if t.avg_days_to_accept is not None else "—",
+        ),
     ):
         _data_row(ws, [label, value])
 
@@ -249,10 +305,16 @@ def district_summary_xlsx(summary: DistrictSummaryOut) -> bytes:
     _section(ws, "Дольше всех ждут исправления")
     _table_header(ws, OLDEST_HEADER)
     for c in summary.oldest_open:
-        _data_row(ws, [
-            c.label, c.address, STATUS_TEXT[c.status],
-            c.created_at.astimezone(MSK).strftime("%d.%m.%Y"), c.age_days,
-        ])
+        _data_row(
+            ws,
+            [
+                c.label,
+                c.address,
+                STATUS_TEXT[c.status],
+                c.created_at.astimezone(MSK).strftime("%d.%m.%Y"),
+                c.age_days,
+            ],
+        )
     if not summary.oldest_open:
         _note(ws, "Неисправленных карточек нет")
 

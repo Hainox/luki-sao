@@ -72,17 +72,19 @@ def test_period_labels_match_frontend():
 
 
 def test_summary_formula_matches_frontend():
-    footnote = "Исправлено — принято администратором префектуры"
-    assert footnote in (FRONTEND_SRC / "pages" / "SummaryPage.tsx").read_text(encoding="utf-8")
     from app.services.summary import FOOTNOTE
 
-    assert footnote in FOOTNOTE
+    footnote_front = _read("components/SummaryParts.tsx")
+    assert FOOTNOTE in footnote_front, "сноска свода разъехалась между бэком и фронтом"
 
 
 def test_roles_match_frontend():
     roles_ts = _read("lib/roles.ts")
     assert "is_prefecture" in roles_ts
-    assert "reviewer" in roles_ts
+    # Весь округ видит только префектура; без района нет ни журнала, ни
+    # свода — см. access.sees_whole_okrug и hasNoJournal.
+    assert "hasNoJournal" in roles_ts
+    assert "!user.is_prefecture && !user.district_id" in roles_ts
     from app.models import User
 
     assert hasattr(User, "is_prefecture")

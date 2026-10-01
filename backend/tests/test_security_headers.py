@@ -10,8 +10,14 @@ async def test_security_headers_on_api_and_uploads(client, jj, admin):
     photo = await upload(client, headers, card["id"], "before")
     assert photo.status_code == 201
 
-    for path in ("/api/cards", "/api/summary", photo.json()["thumbnail_url"]):
-        r = await client.get(path, headers=headers)
+    # Свод по округу — только префектуре (решение владельца продукта):
+    # сотрудник района смотрит подробный свод своего района.
+    for path, who in (
+        ("/api/cards", headers),
+        ("/api/summary", admin),
+        (photo.json()["thumbnail_url"], headers),
+    ):
+        r = await client.get(path, headers=who)
         assert r.status_code == 200, path
         assert r.headers["x-content-type-options"] == "nosniff"
         assert r.headers["x-frame-options"] == "DENY"
