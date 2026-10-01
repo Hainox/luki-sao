@@ -5,7 +5,7 @@
 БД, фото и бэкапами. Наружу оно не публикует ни одного порта:
 
 ```
-браузер ──443──> proxy журнала обходов ──> luki-web:8080 ──> luki-api:8000 ──> db
+браузер ──443──> proxy журнала обходов ──> luki-web:8080 ──> luki-api:8000 ──> luki-db
                   (сертификат luki.obhod-sao.ru)                  │
                                                                   └──> api:8000 журнала обходов (вход)
 ```
@@ -14,9 +14,11 @@
   создаёт compose-проект журнала обходов) под этими именами — так до них
   достаёт proxy журнала обходов, а `luki-api` проверяет логины через
   `http://api:8000`. БД в эту сеть не входит.
-- Имена сервисов именно `luki-api`/`luki-web`, не `api`/`web`: имя сервиса
-  становится DNS-именем во всех его сетях, и второй `api` в
-  `jirajura_default` перехватывал бы запросы к журналу обходов.
+- Все сервисы называются с префиксом `luki-` (`luki-db`, `luki-api`,
+  `luki-web`): имя сервиса становится DNS-именем во всех его сетях. Второй
+  `api` в `jirajura_default` перехватывал бы запросы к журналу обходов, а
+  `luki-api` по имени `db` попадал бы в базу журнала обходов (так и было при
+  первом запуске 01.10.2026 — api падал на `password authentication failed`).
 
 Отсюда два правила:
 - журнал обходов должен быть запущен раньше — без сети `jirajura_default`
@@ -103,7 +105,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 ```bash
 cd /opt/luki-sao
 gunzip -c backups/db_ГГГГММДД_ччммсс.sql.gz | \
-  docker compose -f docker-compose.prod.yml exec -T db psql -U postgres luki_sao
+  docker compose -f docker-compose.prod.yml exec -T luki-db psql -U postgres luki_sao
 tar -xzf backups/uploads_ГГГГММДД_ччммсс.tar.gz -C data
 ```
 
