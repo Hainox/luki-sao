@@ -5,6 +5,7 @@
 DATABASE_URL/UPLOAD_DIR выставляются до первого `import app...`: engine и
 каталог загрузок создаются при импорте модулей.
 """
+import gzip
 import io
 import json
 import os
@@ -43,6 +44,37 @@ DISTRICT_IDS = {name: str(uuid.uuid5(uuid.NAMESPACE_URL, f"sao/{name}")) for nam
 UNKNOWN_DISTRICT_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "sao/unknown"))
 
 
+def _square(lat: float, lon: float, size: float = 0.001) -> list:
+    return [[[[lon, lat], [lon + size, lat], [lon + size, lat + size], [lon, lat + size], [lon, lat]]]]
+
+
+def district_corner(name: str) -> tuple[float, float]:
+    """Юго-западный угол ДТ района в тестовом справочнике; ОДХ района — в
+    0,002° восточнее, следующий район — в 0,01° севернее."""
+    return 55.70 + SAO_DISTRICTS.index(name) * 0.01, 37.50
+
+
+def territories_dataset() -> dict:
+    """Тестовый справочник: по одному ДТ и ОДХ на район. Названия районов —
+    как в реестре, без «ё», — проверяем то же сопоставление, что на проде."""
+    items = []
+    for name in SAO_DISTRICTS:
+        lat, lon = district_corner(name)
+        registry_name = name.replace("ё", "е")
+        items.append({"kind": "dt", "registry_id": f"dt-{name}", "name": f"Двор района {name}",
+                      "districts": [registry_name], "owner": f"Жилищник {name}", "category": "3 категория",
+                      "area_m2": 1000, "passport_url": f"https://reestr-ogh.mos.ru/ogh/dt-{name}",
+                      "polygons": _square(lat, lon)})
+        items.append({"kind": "odh", "registry_id": f"odh-{name}", "name": f"Улица района {name}",
+                      "districts": [registry_name], "owner": "АвД САО", "category": "4 категория",
+                      "area_m2": 5000, "passport_url": f"https://reestr-ogh.mos.ru/ogh/odh-{name}",
+                      "polygons": _square(lat, lon + 0.002)})
+    return {"source": "test", "source_date": "2026-10-01", "items": items}
+
+
+TERRITORY_IDS: dict[tuple[str, str], str] = {}
+
+
 def _admin_sql(sql: str) -> None:
     url = make_url(TEST_DB_URL)
     conn = psycopg2.connect(
@@ -79,6 +111,15 @@ def _prepare_test_database():
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=str(BACKEND_DIR), env=env, check=True,
     )
+    dataset_path = Path(tempfile.mkdtemp(prefix="luki-territories-")) / "territories.json.gz"
+    dataset_path.write_bytes(gzip.compress(json.dumps(territories_dataset(), ensure_ascii=False).encode()))
+    subprocess.run(
+        [sys.executable, "-m", "app.load_territories", str(dataset_path)],
+        cwd=str(BACKEND_DIR), env=env, check=True,
+    )
+    for tid, registry_id in run_sql("SELECT id, registry_id FROM territories"):
+        kind, name = registry_id.split("-", 1)
+        TERRITORY_IDS[(name, kind)] = str(tid)
     yield
 
 
@@ -214,9 +255,21 @@ def image_bytes(fmt: str = "JPEG", size: tuple[int, int] = (64, 48), color=(200,
     return _JPEG_CACHE[key]
 
 
-async def create_card(client, headers, district: str | None = None, address: str = "ул. Усиевича, д. 10",
-                      **extra) -> dict:
-    payload = {"address": address, **extra}
+def place(district: str, kind: str = "dt") -> dict:
+    """Поля места люка для POST /api/cards: объект справочника района."""
+    return {"place_kind": kind, "territory_id": TERRITORY_IDS[(district, kind)]}
+
+
+async def create_card(client, headers, district: str | None = None, address: str | None = "ул. Усиевича, д. 10",
+                      kind: str = "dt", **extra) -> dict:
+    """district — для префектуры (район карточки); у сотрудника района
+    берётся его район. address — уточнение к объекту справочника."""
+    if district is None:
+        me = (await client.get("/api/auth/me", headers=headers)).json()
+        district_name = next(n for n, i in DISTRICT_IDS.items() if i == me["district_id"])
+    else:
+        district_name = district
+    payload = {**place(district_name, kind), "address_note": address, **extra}
     if district:
         payload["district_id"] = DISTRICT_IDS[district]
     r = await client.post("/api/cards", json=payload, headers=headers)

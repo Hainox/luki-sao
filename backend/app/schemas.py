@@ -41,6 +41,22 @@ class DistrictOut(BaseModel):
 
 CardStatus = Literal["detected", "on_review", "accepted", "returned"]
 FilterGroup = Literal["all", "open", "on_review", "accepted"]
+PlaceKind = Literal["dt", "odh"]
+PlaceFilter = Literal["all", "dt", "odh"]
+
+
+class TerritoryOut(BaseModel):
+    id: UUID
+    kind: PlaceKind
+    name: str
+    owner: str | None
+    category: str | None
+    passport_url: str | None
+
+
+class NearbyTerritoryOut(TerritoryOut):
+    # 0 — точка внутри контура объекта.
+    distance_m: int
 
 
 class CardCreate(BaseModel):
@@ -48,7 +64,11 @@ class CardCreate(BaseModel):
     # после потерянного ответа возвращает ту же карточку, а не создаёт вторую.
     id: UUID | None = None
     district_id: UUID | None = None
-    address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)]
+    # Где найден люк — обязательно: ДТ или ОДХ и конкретный объект реестра.
+    place_kind: PlaceKind
+    territory_id: UUID
+    # Уточнение к объекту («у подъезда 2»), необязательно.
+    address_note: Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] | None = None
     lat: Decimal | None = Field(default=None, ge=-90, le=90, max_digits=9, decimal_places=6)
     lon: Decimal | None = Field(default=None, ge=-180, le=180, max_digits=9, decimal_places=6)
     comment: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None
@@ -71,6 +91,8 @@ class CardCreate(BaseModel):
             raise ValueError("Координаты указываются парой: широта и долгота")
         if self.comment == "":
             self.comment = None
+        if self.address_note == "":
+            self.address_note = None
         return self
 
 
@@ -117,6 +139,9 @@ class CardListItem(BaseModel):
     district_id: UUID
     district_name: str
     address: str
+    # У карточек, заведённых до справочника ДТ/ОДХ, места нет.
+    place_kind: PlaceKind | None
+    territory: TerritoryOut | None
     status: CardStatus
     current_attempt: int
     created_at: datetime
@@ -181,6 +206,7 @@ class SummaryRow(BaseModel):
 
 class SummaryOut(BaseModel):
     period: PeriodOut
+    place: PlaceFilter
     rows: list[SummaryRow]
     total: SummaryRow
 
@@ -211,6 +237,7 @@ class OldestOpenCard(BaseModel):
     id: UUID
     label: str
     address: str
+    place_kind: PlaceKind | None
     status: CardStatus
     created_at: datetime
     age_days: int
@@ -219,6 +246,7 @@ class OldestOpenCard(BaseModel):
 class DistrictSummaryOut(BaseModel):
     district: DistrictOut
     period: PeriodOut
+    place: PlaceFilter
     totals: DistrictSummaryTotals
     dynamics_unit: Literal["day", "month"]
     dynamics: list[DynamicsBucket]

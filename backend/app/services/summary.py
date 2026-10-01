@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Card
 from app.services.districts import okrug_districts
-from app.schemas import PeriodOut, SummaryOut, SummaryRow
+from app.schemas import PeriodOut, PlaceFilter, SummaryOut, SummaryRow
 from app.services.formatting import fixed_percent, percent_label
 from app.services.periods import Period
+from app.services.territories import PLACE_TITLES
 from app.services.xlsx_style import safe_append, style_data_row, style_header_row, style_merged_label
 
 TOTAL_LABEL = "Итого по САО"
@@ -40,11 +41,21 @@ def _row(district_id, name: str, detected: int, fixed: int, on_review: int) -> S
     )
 
 
-async def build_summary(db: AsyncSession, period: Period) -> SummaryOut:
+def place_conds(place: PlaceFilter) -> list:
+    return [] if place == "all" else [Card.place_kind == place]
+
+
+def place_caption(place: PlaceFilter) -> str | None:
+    """Строка под заголовком Excel: без неё выгрузку по ОДХ не отличить от
+    свода по всем местам."""
+    return None if place == "all" else f"Где найдены: только {PLACE_TITLES[place]}"
+
+
+async def build_summary(db: AsyncSession, period: Period, place: PlaceFilter = "all") -> SummaryOut:
     """«Выявлено» — карточки, созданные в периоде (повторное исправление
     после возврата новой карточки не создаёт и выявленное не увеличивает);
     «Исправлено» и «На проверке» — те из них, что сейчас в этом статусе."""
-    conds = []
+    conds = place_conds(place)
     start, end = period.utc_bounds
     if start is not None:
         conds.append(Card.created_at >= start)
@@ -79,6 +90,7 @@ async def build_summary(db: AsyncSession, period: Period) -> SummaryOut:
     )
     return SummaryOut(
         period=PeriodOut(kind=period.kind, date_from=period.date_from, date_to=period.date_to, label=period.label),
+        place=place,
         rows=rows,
         total=total,
     )
@@ -94,9 +106,14 @@ def summary_xlsx(summary: SummaryOut) -> bytes:
     style_merged_label(ws, ws.max_row, ncols, header=True, fill=False)
     safe_append(ws, [f"Период: {summary.period.label}"])
     style_merged_label(ws, ws.max_row, ncols)
+    caption = place_caption(summary.place)
+    if caption:
+        safe_append(ws, [caption])
+        style_merged_label(ws, ws.max_row, ncols)
 
     safe_append(ws, XLSX_HEADER)
     style_header_row(ws, ws.max_row, ncols)
+    header_row = ws.max_row
 
     for r in [*summary.rows, summary.total]:
         safe_append(ws, [r.district_name, r.detected, r.fixed, r.on_review, r.percent_label])
@@ -111,7 +128,7 @@ def summary_xlsx(summary: SummaryOut) -> bytes:
 
     for letter, width in zip("ABCDE", (30, 22, 14, 14, 16)):
         ws.column_dimensions[letter].width = width
-    ws.row_dimensions[3].height = 45
+    ws.row_dimensions[header_row].height = 45
 
     buf = BytesIO()
     wb.save(buf)

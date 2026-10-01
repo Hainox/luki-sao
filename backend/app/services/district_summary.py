@@ -11,10 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Card, CardEvent, District
 from app.schemas import (
     DistrictOut, DistrictSummaryOut, DistrictSummaryTotals, DynamicsBucket, OldestOpenCard, PeriodOut,
+    PlaceFilter,
 )
 from app.services.formatting import card_label, percent_label
 from app.services.periods import MSK, Period, msk_today
-from app.services.summary import FOOTNOTE
+from app.services.summary import FOOTNOTE, place_caption, place_conds
+from app.services.territories import PLACE_LABELS
 from app.services.xlsx_style import safe_append, style_data_row, style_header_row, style_merged_label
 
 OPEN_STATUSES = ("detected", "returned")
@@ -44,8 +46,8 @@ PERIOD_NOTE = (
 _MSK_DAY = cast(func.timezone(literal_column("'Europe/Moscow'"), Card.created_at), Date)
 
 
-def _period_conds(district_id, period: Period) -> list:
-    conds = [Card.district_id == district_id]
+def _period_conds(district_id, period: Period, place: PlaceFilter) -> list:
+    conds = [Card.district_id == district_id, *place_conds(place)]
     start, end = period.utc_bounds
     if start is not None:
         conds.append(Card.created_at >= start)
@@ -144,10 +146,10 @@ async def _dynamics(
     ]
 
 
-async def _oldest_open(db: AsyncSession, district_id, today: date) -> list[OldestOpenCard]:
+async def _oldest_open(db: AsyncSession, district_id, place: PlaceFilter, today: date) -> list[OldestOpenCard]:
     cards = (await db.execute(
         select(Card)
-        .where(Card.district_id == district_id, Card.status.in_(OPEN_STATUSES))
+        .where(Card.district_id == district_id, Card.status.in_(OPEN_STATUSES), *place_conds(place))
         .order_by(Card.created_at.asc(), Card.number.asc())
         .limit(OLDEST_OPEN_LIMIT)
     )).scalars().all()
@@ -156,6 +158,7 @@ async def _oldest_open(db: AsyncSession, district_id, today: date) -> list[Oldes
             id=c.id,
             label=card_label(c.number),
             address=c.address,
+            place_kind=c.place_kind,
             status=c.status,
             created_at=c.created_at,
             age_days=max((today - c.created_at.astimezone(MSK).date()).days, 0),
@@ -165,18 +168,19 @@ async def _oldest_open(db: AsyncSession, district_id, today: date) -> list[Oldes
 
 
 async def build_district_summary(
-    db: AsyncSession, district: District, period: Period, now: datetime | None = None,
+    db: AsyncSession, district: District, period: Period, place: PlaceFilter = "all", now: datetime | None = None,
 ) -> DistrictSummaryOut:
     today = msk_today(now or datetime.now(timezone.utc))
-    conds = _period_conds(district.id, period)
+    conds = _period_conds(district.id, period, place)
     unit, dynamics = await _dynamics(db, period, conds, today)
     return DistrictSummaryOut(
         district=DistrictOut(id=district.id, name=district.name),
         period=PeriodOut(kind=period.kind, date_from=period.date_from, date_to=period.date_to, label=period.label),
+        place=place,
         totals=await _totals(db, conds),
         dynamics_unit=unit,
         dynamics=dynamics,
-        oldest_open=await _oldest_open(db, district.id, today),
+        oldest_open=await _oldest_open(db, district.id, place, today),
     )
 
 
@@ -223,6 +227,10 @@ def district_summary_xlsx(summary: DistrictSummaryOut) -> bytes:
     style_merged_label(ws, ws.max_row, NCOLS, header=True, fill=False)
     safe_append(ws, [f"Период: {summary.period.label}"])
     style_merged_label(ws, ws.max_row, NCOLS)
+    caption = place_caption(summary.place)
+    if caption:
+        safe_append(ws, [caption])
+        style_merged_label(ws, ws.max_row, NCOLS)
 
     _section(ws, "Показатели")
     _table_header(ws, KPI_HEADER)
@@ -249,8 +257,9 @@ def district_summary_xlsx(summary: DistrictSummaryOut) -> bytes:
     _section(ws, "Дольше всех ждут исправления")
     _table_header(ws, OLDEST_HEADER)
     for c in summary.oldest_open:
+        address = f"{PLACE_LABELS[c.place_kind]} · {c.address}" if c.place_kind else c.address
         _data_row(ws, [
-            c.label, c.address, STATUS_TEXT[c.status],
+            c.label, address, STATUS_TEXT[c.status],
             c.created_at.astimezone(MSK).strftime("%d.%m.%Y"), c.age_days,
         ])
     if not summary.oldest_open:

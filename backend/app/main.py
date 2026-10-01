@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import DEV_SECRET_KEY, settings
-from app.routers import auth, cards, districts, summary
+from app.routers import auth, cards, districts, summary, territories
 
 
 def _check_production_secret() -> None:
@@ -50,6 +50,7 @@ async def security_headers(request: Request, call_next):
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(districts.router, prefix="/api/districts", tags=["districts"])
 app.include_router(cards.router, prefix="/api/cards", tags=["cards"])
+app.include_router(territories.router, prefix="/api/territories", tags=["territories"])
 app.include_router(summary.router, prefix="/api", tags=["summary"])
 
 # StaticFiles берёт Content-Type из mimetypes, а в образе python:3.12-slim

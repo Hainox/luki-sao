@@ -72,6 +72,20 @@ def resolve_summary_district(user: User, requested: UUID | None) -> UUID:
     return user.district_id
 
 
+def resolve_work_district(user: User, requested: UUID | None) -> UUID:
+    """Район, где пользователь фиксирует нарушение: префектура — любой
+    выбранный, сотрудник района — только свой."""
+    if user.is_prefecture:
+        if requested is None:
+            raise HTTPException(422, "Выберите район")
+        return requested
+    if user.district_id is None:
+        raise HTTPException(403, NO_DISTRICT_MESSAGE)
+    if requested is not None and requested != user.district_id:
+        raise HTTPException(403, "Фиксировать нарушения можно только в своём районе")
+    return user.district_id
+
+
 def can_view(user: User, card: Card) -> bool:
     if sees_whole_okrug(user):
         return True
