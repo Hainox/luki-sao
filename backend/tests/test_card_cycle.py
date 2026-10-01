@@ -1,4 +1,5 @@
 """Полный цикл карточки: ДО → ПОСЛЕ → проверка → возврат → новое ПОСЛЕ → приёмка."""
+
 import asyncio
 import uuid
 
@@ -9,12 +10,22 @@ async def test_full_cycle_keeps_history_and_counts_detected_once(client, jj, adm
     inspector = await login_as(client, jj, "inspector1", district="Аэропорт")
     colleague = await login_as(client, jj, "inspector2", district="Аэропорт")
 
-    card = await create_card(client, inspector, address="Ленинградский пр-т, 64", comment="Провал крышки",
-                             lat=55.8, lon=37.53)
+    card = await create_card(
+        client,
+        inspector,
+        address="Ленинградский пр-т, 64",
+        comment="Провал крышки",
+        lat=55.8,
+        lon=37.53,
+    )
     assert card["label"] == "ОЛХ-001"
     assert card["status"] == "detected"
     assert card["district_name"] == "Аэропорт"
-    assert card["permissions"] == {"can_add_before": True, "can_add_after": True, "can_review": False}
+    assert card["permissions"] == {
+        "can_add_before": True,
+        "can_add_after": True,
+        "can_review": False,
+    }
     card_id = card["id"]
 
     r = await upload(client, inspector, card_id, "before")
@@ -44,8 +55,11 @@ async def test_full_cycle_keeps_history_and_counts_detected_once(client, jj, adm
     # Возврат без комментария — нельзя.
     r = await client.post(f"/api/cards/{card_id}/return", json={"comment": "   "}, headers=admin)
     assert r.status_code == 422
-    r = await client.post(f"/api/cards/{card_id}/return", json={"comment": "Крышка не закреплена"},
-                          headers=admin)
+    r = await client.post(
+        f"/api/cards/{card_id}/return",
+        json={"comment": "Крышка не закреплена"},
+        headers=admin,
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "returned"
     assert r.json()["return_comment"] == "Крышка не закреплена"
@@ -71,7 +85,11 @@ async def test_full_cycle_keeps_history_and_counts_detected_once(client, jj, adm
     detail = r.json()
     assert detail["status"] == "accepted"
     assert detail["accepted_at"] is not None
-    assert detail["permissions"] == {"can_add_before": False, "can_add_after": False, "can_review": False}
+    assert detail["permissions"] == {
+        "can_add_before": False,
+        "can_add_after": False,
+        "can_review": False,
+    }
 
     # Вся история на месте: 1 ДО, 2 ПОСЛЕ попытки 1, 1 ПОСЛЕ попытки 2.
     photos = [(p["kind"], p["attempt"]) for p in detail["photos"]]
@@ -155,9 +173,15 @@ async def test_coordinates_are_rounded_and_paired(client, jj):
     detail = (await client.get(f"/api/cards/{card['id']}", headers=inspector)).json()
     assert detail["lat"] == "55.805123"
     assert detail["lon"] == "37.512346"
-    r = await client.post("/api/cards", json={"address": "ул. Зорге, 1", "lat": 55.8}, headers=inspector)
+    r = await client.post(
+        "/api/cards", json={"address": "ул. Зорге, 1", "lat": 55.8}, headers=inspector
+    )
     assert r.status_code == 422
-    r = await client.post("/api/cards", json={"address": "ул. Зорге, 1", "lat": 95, "lon": 37}, headers=inspector)
+    r = await client.post(
+        "/api/cards",
+        json={"address": "ул. Зорге, 1", "lat": 95, "lon": 37},
+        headers=inspector,
+    )
     assert r.status_code == 422
 
 
@@ -177,11 +201,18 @@ async def test_parallel_first_after_photos_make_one_attempt(client, jj, admin):
         assert detail["status"] == "on_review"
         assert {r.json()["attempt"] for r in results} == {detail["current_attempt"]}
         assert detail["after_count"] == 2
-        r = await client.post(f"/api/cards/{card['id']}/return", json={"comment": "Ещё раз"}, headers=admin)
+        r = await client.post(
+            f"/api/cards/{card['id']}/return",
+            json={"comment": "Ещё раз"},
+            headers=admin,
+        )
         assert r.status_code == 200
     kinds = [(e["kind"], e["attempt"]) for e in detail["events"] if e["kind"] == "after_uploaded"]
-    assert kinds == [("after_uploaded", 1), ("after_uploaded", 2), ("after_uploaded", 3)]
-
+    assert kinds == [
+        ("after_uploaded", 1),
+        ("after_uploaded", 2),
+        ("after_uploaded", 3),
+    ]
 
 
 async def test_decision_during_upload_rejects_stale_after_photo(client, jj, admin, monkeypatch):
@@ -199,8 +230,11 @@ async def test_decision_during_upload_rejects_stale_after_photo(client, jj, admi
 
     async def save_while_prefecture_returns(file, kind):
         stored = await real_save(file, kind)
-        r = await client.post(f"/api/cards/{card['id']}/return", json={"comment": "Не видно крышку"},
-                              headers=admin)
+        r = await client.post(
+            f"/api/cards/{card['id']}/return",
+            json={"comment": "Не видно крышку"},
+            headers=admin,
+        )
         assert r.status_code == 200
         return stored
 
@@ -232,7 +266,9 @@ async def test_repeated_create_with_same_id_does_not_duplicate_card(client, jj):
     assert [e["kind"] for e in again["events"]] == ["created"]
     assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1
 
-    r = await client.post("/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague)
+    r = await client.post(
+        "/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague
+    )
     assert r.status_code == 409
     assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1
 
@@ -266,7 +302,9 @@ async def test_simultaneous_create_with_same_id_returns_card_not_500(client, jj,
     assert [e["kind"] for e in again["events"]] == ["created"]
 
     missed.clear()
-    r = await client.post("/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague)
+    r = await client.post(
+        "/api/cards", json={"id": card_id, "address": "ул. Зорге, 1"}, headers=colleague
+    )
     assert missed == [card_id]
     assert r.status_code == 409
     assert (await client.get("/api/cards", headers=inspector)).json()["counts"]["all"] == 1

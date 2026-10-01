@@ -36,6 +36,20 @@ jobs:
         working-directory: backend
         run: pip install -r requirements-dev.txt
 
+      - name: Lint (ruff)
+        working-directory: backend
+        run: python -m ruff check app tests alembic && python -m ruff format --check app tests alembic
+
+      - name: Typecheck (mypy)
+        working-directory: backend
+        env:
+          SECRET_KEY: ci-test-secret-key-0123456789abcdef
+        run: python -m mypy app
+
+      - name: Audit dependencies (pip-audit)
+        working-directory: backend
+        run: python -m pip_audit -r requirements.txt
+
       - name: Run tests
         working-directory: backend
         env:
@@ -69,6 +83,30 @@ jobs:
         working-directory: frontend
         run: npm test
 
+      - name: Audit dependencies (npm audit)
+        working-directory: frontend
+        run: npm audit --omit=dev
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secrets in history and tree (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Vulnerabilities in built images (trivy)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
   deploy-config:
     runs-on: ubuntu-latest
     steps:
@@ -99,9 +137,18 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD/frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
-            nginxinc/nginx-unprivileged:1.30-alpine nginx -t
+            nginxinc/nginx-unprivileged:1.30-alpine@sha256:ed04ec1ff34502c339ee5c3ae3f855442398edc1d05591e2b98981dcbbd20b1e nginx -t
 
       - name: Validate shell scripts
         run: |
           bash -n deploy/scripts/backup.sh
-          sh -n backend/docker-entrypoint.sh
+          bash -n backend/docker-entrypoint.sh
+
+      - name: Backup script fails loudly without DB password
+        run: |
+          mkdir -p /tmp/backup-ci && cp deploy/scripts/backup.sh /tmp/backup-ci/backup.sh
+          cd /tmp/backup-ci
+          if POSTGRES_PASSWORD= ./backup.sh; then
+            echo "backup.sh без пароля должен падать" >&2
+            exit 1
+          fi

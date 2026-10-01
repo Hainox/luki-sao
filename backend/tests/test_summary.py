@@ -1,4 +1,5 @@
 """Свод по люкам: арифметика, формат процента, период по Москве, Excel."""
+
 from datetime import date, datetime, timezone
 from io import BytesIO
 
@@ -8,24 +9,37 @@ from openpyxl import load_workbook
 from app.services.formatting import card_label, percent_label
 from app.services.periods import resolve_period
 from app.services.summary import FOOTNOTE, XLSX_HEADER
-from tests.conftest import SAO_DISTRICTS, create_card, login_as, run_sql, set_created_at, upload
+from tests.conftest import (
+    SAO_DISTRICTS,
+    create_card,
+    login_as,
+    run_sql,
+    set_created_at,
+    upload,
+)
 
 
-@pytest.mark.parametrize("fixed,detected,expected", [
-    (2, 3, "66,7%"),
-    (7, 10, "70%"),
-    (0, 0, "—"),
-    (0, 4, "0%"),
-    (3, 3, "100%"),
-    (1, 8, "12,5%"),
-    (5, 16, "31,3%"),  # 31,25 → половина вверх, а не банковское округление
-    (1, 3, "33,3%"),
-])
+@pytest.mark.parametrize(
+    "fixed,detected,expected",
+    [
+        (2, 3, "66,7%"),
+        (7, 10, "70%"),
+        (0, 0, "—"),
+        (0, 4, "0%"),
+        (3, 3, "100%"),
+        (1, 8, "12,5%"),
+        (5, 16, "31,3%"),  # 31,25 → половина вверх, а не банковское округление
+        (1, 3, "33,3%"),
+    ],
+)
 def test_percent_label(fixed, detected, expected):
     assert percent_label(fixed, detected) == expected
 
 
-@pytest.mark.parametrize("number,expected", [(1, "ОЛХ-001"), (42, "ОЛХ-042"), (999, "ОЛХ-999"), (1000, "ОЛХ-1000")])
+@pytest.mark.parametrize(
+    "number,expected",
+    [(1, "ОЛХ-001"), (42, "ОЛХ-042"), (999, "ОЛХ-999"), (1000, "ОЛХ-1000")],
+)
 def test_card_label(number, expected):
     assert card_label(number) == expected
 
@@ -42,7 +56,10 @@ def test_rolling_periods_by_moscow_date():
     assert start == datetime(2026, 9, 30, 21, 0, tzinfo=timezone.utc)
     assert end == datetime(2026, 10, 1, 21, 0, tzinfo=timezone.utc)
     assert resolve_period("custom", date(2026, 9, 1), None).label == "01.09.2026"
-    assert resolve_period("custom", date(2026, 9, 1), date(2026, 9, 7)).label == "01.09.2026 — 07.09.2026"
+    assert (
+        resolve_period("custom", date(2026, 9, 1), date(2026, 9, 7)).label
+        == "01.09.2026 — 07.09.2026"
+    )
 
 
 async def _make_cards(client, jj, admin):
@@ -70,8 +87,12 @@ async def test_summary_table(client, jj, admin):
     data = r.json()
     assert [row["district_name"] for row in data["rows"]] == sorted(SAO_DISTRICTS)
     by_name = {row["district_name"]: row for row in data["rows"]}
-    assert (by_name["Аэропорт"]["detected"], by_name["Аэропорт"]["fixed"],
-            by_name["Аэропорт"]["on_review"], by_name["Аэропорт"]["percent_label"]) == (3, 2, 1, "66,7%")
+    assert (
+        by_name["Аэропорт"]["detected"],
+        by_name["Аэропорт"]["fixed"],
+        by_name["Аэропорт"]["on_review"],
+        by_name["Аэропорт"]["percent_label"],
+    ) == (3, 2, 1, "66,7%")
     assert by_name["Сокол"]["percent_label"] == "70%"
     assert by_name["Сокол"]["percent"] == "70.0"
     assert by_name["Коптево"]["detected"] == 0
@@ -81,14 +102,19 @@ async def test_summary_table(client, jj, admin):
     assert total["district_name"] == "Итого по САО"
     assert (total["detected"], total["fixed"], total["on_review"]) == (13, 9, 1)
     assert total["percent_label"] == "69,2%"
-    assert data["period"] == {"kind": "all", "date_from": None, "date_to": None, "label": "За всё время"}
+    assert data["period"] == {
+        "kind": "all",
+        "date_from": None,
+        "date_to": None,
+        "label": "За всё время",
+    }
 
 
 async def test_summary_period_uses_moscow_midnight(client, jj, admin):
     aero = await login_as(client, jj, "inspector1", district="Аэропорт")
     just_after = await create_card(client, aero)
     just_before = await create_card(client, aero)
-    set_created_at(just_after["id"], "2026-09-14T21:30:00+00:00")   # 15.09 00:30 МСК
+    set_created_at(just_after["id"], "2026-09-14T21:30:00+00:00")  # 15.09 00:30 МСК
     set_created_at(just_before["id"], "2026-09-14T20:59:00+00:00")  # 14.09 23:59 МСК
 
     params = {"period": "custom", "date_from": "2026-09-15", "date_to": "2026-09-15"}
@@ -97,17 +123,26 @@ async def test_summary_period_uses_moscow_midnight(client, jj, admin):
     assert data["period"]["label"] == "15.09.2026"
 
     params = {"period": "custom", "date_from": "2026-09-14", "date_to": "2026-09-14"}
-    assert (await client.get("/api/summary", params=params, headers=admin)).json()["total"]["detected"] == 1
+    assert (await client.get("/api/summary", params=params, headers=admin)).json()["total"][
+        "detected"
+    ] == 1
 
 
 async def test_refix_after_return_does_not_increase_detected(client, jj, admin):
     aero = await login_as(client, jj, "inspector1", district="Аэропорт")
     card = await create_card(client, aero)
     await upload(client, aero, card["id"], "after")
-    await client.post(f"/api/cards/{card['id']}/return", json={"comment": "Переделать"}, headers=admin)
+    await client.post(
+        f"/api/cards/{card['id']}/return", json={"comment": "Переделать"}, headers=admin
+    )
     summary = (await client.get("/api/summary", headers=admin)).json()
     row = next(r for r in summary["rows"] if r["district_name"] == "Аэропорт")
-    assert (row["detected"], row["fixed"], row["on_review"], row["percent_label"]) == (1, 0, 0, "0%")
+    assert (row["detected"], row["fixed"], row["on_review"], row["percent_label"]) == (
+        1,
+        0,
+        0,
+        "0%",
+    )
 
     await upload(client, aero, card["id"], "after")
     summary = (await client.get("/api/summary", headers=admin)).json()
@@ -117,7 +152,12 @@ async def test_refix_after_return_does_not_increase_detected(client, jj, admin):
     await client.post(f"/api/cards/{card['id']}/accept", headers=admin)
     summary = (await client.get("/api/summary", headers=admin)).json()
     row = next(r for r in summary["rows"] if r["district_name"] == "Аэропорт")
-    assert (row["detected"], row["fixed"], row["on_review"], row["percent_label"]) == (1, 1, 0, "100%")
+    assert (row["detected"], row["fixed"], row["on_review"], row["percent_label"]) == (
+        1,
+        1,
+        0,
+        "100%",
+    )
     assert summary["total"]["detected"] == 1
 
 
@@ -147,7 +187,9 @@ async def test_summary_requires_login(client):
 
 
 async def test_summary_excludes_unknown_district(client, jj, admin):
-    names = [r["district_name"] for r in (await client.get("/api/summary", headers=admin)).json()["rows"]]
+    names = [
+        r["district_name"] for r in (await client.get("/api/summary", headers=admin)).json()["rows"]
+    ]
     assert "Неизвестный район" not in names
     assert len(names) == 16
 
@@ -165,7 +207,7 @@ async def test_summary_xlsx(client, jj, admin):
     assert rows[0][0] == "Свод по люкам САО — неудовлетворительные ОЛХ"
     assert rows[1][0] == "Период: За всё время"
     assert rows[2] == XLSX_HEADER
-    body = {row[0]: row for row in rows[3:3 + 17]}
+    body = {row[0]: row for row in rows[3 : 3 + 17]}
     assert body["Аэропорт"] == ["Аэропорт", 3, 2, 1, "66,7%"]
     assert body["Коптево"] == ["Коптево", 0, 0, 0, "—"]
     assert body["Итого по САО"] == ["Итого по САО", 13, 9, 1, "69,2%"]
@@ -173,9 +215,17 @@ async def test_summary_xlsx(client, jj, admin):
 
 
 async def test_summary_xlsx_is_formula_injection_safe(client, jj, admin):
-    run_sql("UPDATE districts SET name = %s WHERE name = 'Коптево'", ('=HYPERLINK("http://evil.test","x")',))
+    run_sql(
+        "UPDATE districts SET name = %s WHERE name = 'Коптево'",
+        ('=HYPERLINK("http://evil.test","x")',),
+    )
     r = await client.get("/api/summary.xlsx", params={"period": "month"}, headers=admin)
     ws = load_workbook(BytesIO(r.content)).active
-    cells = [c for row in ws.iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("=")]
+    cells = [
+        c
+        for row in ws.iter_rows()
+        for c in row
+        if isinstance(c.value, str) and c.value.startswith("=")
+    ]
     assert len(cells) == 1
     assert cells[0].data_type == "s"

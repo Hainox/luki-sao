@@ -1,4 +1,5 @@
 """Период отбора карточек — по дате создания карточки, по московскому времени."""
+
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
@@ -34,11 +35,15 @@ class Period:
         """
         start = (
             datetime.combine(self.date_from, time.min, tzinfo=MSK).astimezone(timezone.utc)
-            if self.date_from else None
+            if self.date_from
+            else None
         )
         end = (
-            datetime.combine(self.date_to + timedelta(days=1), time.min, tzinfo=MSK).astimezone(timezone.utc)
-            if self.date_to else None
+            datetime.combine(self.date_to + timedelta(days=1), time.min, tzinfo=MSK).astimezone(
+                timezone.utc
+            )
+            if self.date_to
+            else None
         )
         return start, end
 

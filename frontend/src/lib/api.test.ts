@@ -34,6 +34,13 @@ describe('клиент API: истёкший вход', () => {
     expect(useAuthStore.getState().relogin).toBeNull()
   })
 
+  it('выход отзывает токен на сервере', async () => {
+    const requests = fakeServer(() => ({ status: 204 }))
+    await authApi.logout()
+    expect(requests[0].path).toBe('/api/auth/logout')
+    expect(requests[0].auth).toBe('Bearer old-token')
+  })
+
   it('запрос ждёт повторного входа и повторяется; при выходе — LoggedOutError', async () => {
     let calls = 0
     fakeServer((r) => {

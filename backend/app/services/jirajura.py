@@ -3,6 +3,7 @@
 Своих паролей у приложения нет — владелец продукта решил, что сотрудники
 входят теми же учётными данными, что и в журнал обходов.
 """
+
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -51,7 +52,9 @@ def _detail(response: httpx.Response, fallback: str) -> str:
     return detail if isinstance(detail, str) and detail else fallback
 
 
-async def login(client: httpx.AsyncClient, login: str, password: str, client_ip: str) -> JiraJuraLogin:
+async def login(
+    client: httpx.AsyncClient, login: str, password: str, client_ip: str
+) -> JiraJuraLogin:
     try:
         response = await client.post(
             "/api/v1/auth/login",
@@ -70,7 +73,11 @@ async def login(client: httpx.AsyncClient, login: str, password: str, client_ip:
         headers = {}
         if response.headers.get("retry-after"):
             headers["Retry-After"] = response.headers["retry-after"]
-        raise JiraJuraError(429, _detail(response, "Слишком много попыток входа — попробуйте позже"), headers)
+        raise JiraJuraError(
+            429,
+            _detail(response, "Слишком много попыток входа — попробуйте позже"),
+            headers,
+        )
     if response.status_code == 422:
         raise JiraJuraError(401, "Неверный логин или пароль")
     if response.status_code != 200:

@@ -97,5 +97,8 @@ async def get_district_summary_xlsx(
     summary = await _district_summary(db, user, district_id, period, date_from, date_to)
     content = await run_in_threadpool(district_summary_xlsx, summary)
     return _xlsx_response(
-        content, district_xlsx_title(summary.district.name), "luki-sao-svod-rayona.xlsx", summary.period,
+        content,
+        district_xlsx_title(summary.district.name),
+        "luki-sao-svod-rayona.xlsx",
+        summary.period,
     )

@@ -1,4 +1,6 @@
 """Приём и хранение фотографий: проверка типа и размера, превью JPEG."""
+
+import asyncio
 import logging
 import os
 import threading
@@ -29,7 +31,19 @@ except ImportError:  # pragma: no cover — зависит от сборки о�
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "heic", "heif", "webp"}
 HEIF_EXTENSIONS = {"heic", "heif"}
 # Марки коробки ftyp (ISO BMFF), с которыми камеры пишут HEIF/HEIC.
-HEIF_BRANDS = {b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"hevm", b"hevs", b"mif1", b"mif2", b"msf1"}
+HEIF_BRANDS = {
+    b"heic",
+    b"heix",
+    b"heim",
+    b"heis",
+    b"hevc",
+    b"hevx",
+    b"hevm",
+    b"hevs",
+    b"mif1",
+    b"mif2",
+    b"msf1",
+}
 
 THUMBNAIL_SIZE = (480, 480)
 PREVIEW_SIZE = (2048, 2048)
@@ -65,7 +79,7 @@ def _is_heif_container(path: Path) -> bool:
     if len(head) < 16 or head[4:8] != b"ftyp":
         return False
     box_end = min(int.from_bytes(head[:4], "big"), len(head))
-    brands = [head[8:12]] + [head[i:i + 4] for i in range(16, box_end - 3, 4)]
+    brands = [head[8:12]] + [head[i : i + 4] for i in range(16, box_end - 3, 4)]
     return any(b in HEIF_BRANDS for b in brands)
 
 
@@ -74,14 +88,14 @@ def _make_derivatives(abs_original: Path, ext: str, stem: str) -> tuple[str | No
     показывает ни один браузер, кроме Safari. Возвращает относительные пути."""
     root = upload_root()
     heif = ext in HEIF_EXTENSIONS
-    with _DECODE_SLOT, Image.open(abs_original) as img:
+    with _DECODE_SLOT, Image.open(abs_original) as opened:
         # Сначала уменьшаем, потом поворачиваем по EXIF: thumbnail() декодирует
         # JPEG сразу в уменьшенном масштабе, а exif_transpose/copy() делают
         # полноразмерные копии — 48-Мп HEIC или 50-Мп JPEG с телефона занимали
         # так ~650 МБ при mem_limit 512m у api. Рамки квадратные, поэтому
         # поворот после уменьшения даёт тот же результат.
-        img.thumbnail(PREVIEW_SIZE if heif else THUMBNAIL_SIZE)
-        img = ImageOps.exif_transpose(img)
+        opened.thumbnail(PREVIEW_SIZE if heif else THUMBNAIL_SIZE)
+        img = ImageOps.exif_transpose(opened)
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
 
@@ -121,13 +135,18 @@ async def save_photo(file: UploadFile, subdir: str) -> StoredPhoto:
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, "Файл пустой")
-    except BaseException:
+    except (Exception, asyncio.CancelledError):
         abs_path.unlink(missing_ok=True)
         raise
 
     try:
         thumb_rel, preview_rel = await run_in_threadpool(_make_derivatives, abs_path, ext, stem)
-    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+        Image.DecompressionBombError,
+    ) as exc:
         if ext in HEIF_EXTENSIONS and _is_heif_container(abs_path):
             # Редкие варианты HEIC с камер телефонов libheif может не
             # разобрать — фото всё равно нужно сохранить как доказательство,

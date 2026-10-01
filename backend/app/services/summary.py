@@ -1,4 +1,5 @@
 """Свод по люкам: выявлено / исправлено / на проверке по районам за период."""
+
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -7,11 +8,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Card
-from app.services.districts import okrug_districts
 from app.schemas import PeriodOut, SummaryOut, SummaryRow
+from app.services.districts import okrug_districts
 from app.services.formatting import fixed_percent, percent_label
 from app.services.periods import Period
-from app.services.xlsx_style import safe_append, style_data_row, style_header_row, style_merged_label
+from app.services.xlsx_style import (
+    safe_append,
+    style_data_row,
+    style_header_row,
+    style_merged_label,
+)
 
 TOTAL_LABEL = "Итого по САО"
 XLSX_TITLE = "Свод по люкам САО — неудовлетворительные ОЛХ"
@@ -53,22 +59,32 @@ async def build_summary(db: AsyncSession, period: Period) -> SummaryOut:
 
     stats = {
         r.district_id: r
-        for r in (await db.execute(
-            select(
-                Card.district_id,
-                func.count().label("detected"),
-                func.count().filter(Card.status == "accepted").label("fixed"),
-                func.count().filter(Card.status == "on_review").label("on_review"),
+        for r in (
+            await db.execute(
+                select(
+                    Card.district_id,
+                    func.count().label("detected"),
+                    func.count().filter(Card.status == "accepted").label("fixed"),
+                    func.count().filter(Card.status == "on_review").label("on_review"),
+                )
+                .where(*conds)
+                .group_by(Card.district_id)
             )
-            .where(*conds)
-            .group_by(Card.district_id)
-        )).all()
+        ).all()
     }
 
     rows = []
     for d in await okrug_districts(db):
         s = stats.get(d.id)
-        rows.append(_row(d.id, d.name, s.detected if s else 0, s.fixed if s else 0, s.on_review if s else 0))
+        rows.append(
+            _row(
+                d.id,
+                d.name,
+                s.detected if s else 0,
+                s.fixed if s else 0,
+                s.on_review if s else 0,
+            )
+        )
 
     total = _row(
         None,
@@ -78,7 +94,12 @@ async def build_summary(db: AsyncSession, period: Period) -> SummaryOut:
         sum(r.on_review for r in rows),
     )
     return SummaryOut(
-        period=PeriodOut(kind=period.kind, date_from=period.date_from, date_to=period.date_to, label=period.label),
+        period=PeriodOut(
+            kind=period.kind,
+            date_from=period.date_from,
+            date_to=period.date_to,
+            label=period.label,
+        ),
         rows=rows,
         total=total,
     )

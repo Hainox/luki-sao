@@ -1,6 +1,9 @@
 name: luki-sao-dev
 
 # Локальный запуск для разработки: порты опубликованы, без внешних сетей.
+# ТОЛЬКО ДЛЯ ЛОКАЛЬНОЙ РАЗРАБОТКИ: пароль postgres/postgres и открытые порты
+# 5433/8000/8080 — никогда не применять этот файл на проде и не открывать
+# эти порты в интернет (прод — docker-compose.prod.yml без ports:).
 #   cp .env.example .env   # и поправьте JIRAJURA_API_URL
 #   docker compose up --build
 # Приложение: http://localhost:8080, API: http://localhost:8000/api/docs
@@ -10,7 +13,7 @@ name: luki-sao-dev
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     environment:
       POSTGRES_DB: luki_sao
       POSTGRES_USER: postgres

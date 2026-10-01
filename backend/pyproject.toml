@@ -1,0 +1,24 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "ASYNC"]
+ignore = [
+    # datetime.timezone.utc — стиль кодовой базы (везде timezone.utc),
+    # миграция на datetime.UTC не даёт ничего, кроме шума в diff
+    "UP017",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Запись чанков загружаемого фото: потоковая запись в файл — суть операции,
+# aiofiles ради одного места тянуть не стоит
+"app/services/photos.py" = ["ASYNC230"]
+# Миграции alembic — исторический стиль шаблонов, не трогаем
+"alembic/**/*.py" = ["UP007", "UP035"]
+# DEV_SECRET_KEY — намеренная константа-маркер для проверки заготовок
+"app/config.py" = ["S105"]
+"app/routers/auth.py" = ["S105"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]

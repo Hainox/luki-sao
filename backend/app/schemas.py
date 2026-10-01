@@ -1,4 +1,5 @@
 """Pydantic-схемы API."""
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -168,6 +169,7 @@ class ReviewQueueOut(BaseModel):
 
 
 # ── Свод ────────────────────────────────────────────────────────
+
 
 class SummaryRow(BaseModel):
     district_id: UUID | None

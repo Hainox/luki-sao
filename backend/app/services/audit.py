@@ -1,4 +1,5 @@
 """Журнал важных действий (вход, создание карточки, фото, решения префектуры)."""
+
 from typing import Any
 from uuid import UUID
 
@@ -18,11 +19,13 @@ def log_action(
 ) -> None:
     """Добавляет запись в текущую транзакцию — коммитит вызывающий код,
     чтобы запись аудита и само действие фиксировались вместе."""
-    db.add(AuditLog(
-        user_id=user_id,
-        action=action,
-        entity_type=entity_type,
-        entity_id=str(entity_id) if entity_id is not None else None,
-        details=details,
-        ip=ip,
-    ))
+    db.add(
+        AuditLog(
+            user_id=user_id,
+            action=action,
+            entity_type=entity_type,
+            entity_id=str(entity_id) if entity_id is not None else None,
+            details=details,
+            ip=ip,
+        )
+    )
