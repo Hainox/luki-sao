@@ -3,6 +3,8 @@ import type {
   CardDetail,
   CardList,
   District,
+  DistrictSummary,
+  DistrictSummaryParams,
   FilterGroup,
   LoginResponse,
   PeriodParams,
@@ -207,7 +209,12 @@ export const cardsApi = {
 }
 
 export const summaryApi = {
+  /** Таблица по всем районам — только префектуре. */
   get: (params: PeriodParams) => request<Summary>('GET', '/summary', undefined, { params: { ...params } }),
   xlsx: (params: PeriodParams) =>
     request<Blob>('GET', '/summary.xlsx', undefined, { params: { ...params }, responseType: 'blob' }),
+  district: (params: DistrictSummaryParams) =>
+    request<DistrictSummary>('GET', '/summary/district', undefined, { params: { ...params } }),
+  districtXlsx: (params: DistrictSummaryParams) =>
+    request<Blob>('GET', '/summary/district.xlsx', undefined, { params: { ...params }, responseType: 'blob' }),
 }

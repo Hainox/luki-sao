@@ -64,8 +64,8 @@ async def _make_cards(client, jj, admin):
 
 
 async def test_summary_table(client, jj, admin):
-    aero = await _make_cards(client, jj, admin)
-    r = await client.get("/api/summary", headers=aero)
+    await _make_cards(client, jj, admin)
+    r = await client.get("/api/summary", headers=admin)
     assert r.status_code == 200
     data = r.json()
     assert [row["district_name"] for row in data["rows"]] == sorted(SAO_DISTRICTS)
@@ -92,12 +92,12 @@ async def test_summary_period_uses_moscow_midnight(client, jj, admin):
     set_created_at(just_before["id"], "2026-09-14T20:59:00+00:00")  # 14.09 23:59 МСК
 
     params = {"period": "custom", "date_from": "2026-09-15", "date_to": "2026-09-15"}
-    data = (await client.get("/api/summary", params=params, headers=aero)).json()
+    data = (await client.get("/api/summary", params=params, headers=admin)).json()
     assert data["total"]["detected"] == 1
     assert data["period"]["label"] == "15.09.2026"
 
     params = {"period": "custom", "date_from": "2026-09-14", "date_to": "2026-09-14"}
-    assert (await client.get("/api/summary", params=params, headers=aero)).json()["total"]["detected"] == 1
+    assert (await client.get("/api/summary", params=params, headers=admin)).json()["total"]["detected"] == 1
 
 
 async def test_refix_after_return_does_not_increase_detected(client, jj, admin):
@@ -105,30 +105,40 @@ async def test_refix_after_return_does_not_increase_detected(client, jj, admin):
     card = await create_card(client, aero)
     await upload(client, aero, card["id"], "after")
     await client.post(f"/api/cards/{card['id']}/return", json={"comment": "Переделать"}, headers=admin)
-    summary = (await client.get("/api/summary", headers=aero)).json()
+    summary = (await client.get("/api/summary", headers=admin)).json()
     row = next(r for r in summary["rows"] if r["district_name"] == "Аэропорт")
     assert (row["detected"], row["fixed"], row["on_review"], row["percent_label"]) == (1, 0, 0, "0%")
 
     await upload(client, aero, card["id"], "after")
-    summary = (await client.get("/api/summary", headers=aero)).json()
+    summary = (await client.get("/api/summary", headers=admin)).json()
     row = next(r for r in summary["rows"] if r["district_name"] == "Аэропорт")
     assert (row["detected"], row["fixed"], row["on_review"]) == (1, 0, 1)
 
     await client.post(f"/api/cards/{card['id']}/accept", headers=admin)
-    summary = (await client.get("/api/summary", headers=aero)).json()
+    summary = (await client.get("/api/summary", headers=admin)).json()
     row = next(r for r in summary["rows"] if r["district_name"] == "Аэропорт")
     assert (row["detected"], row["fixed"], row["on_review"], row["percent_label"]) == (1, 1, 0, "100%")
     assert summary["total"]["detected"] == 1
 
 
-async def test_district_staff_see_whole_okrug_in_summary(client, jj, admin):
-    aero = await login_as(client, jj, "inspector1", district="Аэропорт")
-    sokol = await login_as(client, jj, "inspector2", district="Сокол")
-    await create_card(client, sokol)
-    summary = (await client.get("/api/summary", headers=aero)).json()
-    assert len(summary["rows"]) == 16
-    sokol_row = next(r for r in summary["rows"] if r["district_name"] == "Сокол")
-    assert sokol_row["detected"] == 1
+@pytest.mark.parametrize("role", ["inspector", "reviewer"])
+async def test_okrug_summary_is_prefecture_only(client, jj, admin, role):
+    staff = await login_as(client, jj, f"aero_{role}", role=role, district="Аэропорт")
+    await create_card(client, staff)
+    for path in ("/api/summary", "/api/summary.xlsx"):
+        r = await client.get(path, headers=staff)
+        assert r.status_code == 403, path
+        assert r.json()["detail"] == "Свод по всем районам доступен только префектуре"
+        assert (await client.get(path, headers=admin)).status_code == 200
+
+
+@pytest.mark.parametrize("role", ["inspector", "reviewer"])
+async def test_okrug_summary_without_district_explains_why(client, jj, admin, role):
+    orphan = await login_as(client, jj, f"orphan_{role}", role=role, district=None)
+    for path in ("/api/summary", "/api/summary.xlsx"):
+        r = await client.get(path, headers=orphan)
+        assert r.status_code == 403, path
+        assert "не назначен район" in r.json()["detail"]
 
 
 async def test_summary_requires_login(client):

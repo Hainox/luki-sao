@@ -82,24 +82,25 @@ async def test_only_prefecture_accepts_and_returns(client, jj, admin):
     assert (await client.post(f"/api/cards/{card['id']}/accept", headers=admin)).status_code == 200
 
 
-async def test_reviewer_without_district_reads_okrug_but_cannot_act(client, jj, admin):
+async def test_reviewer_without_district_sees_no_journal(client, jj, admin):
+    # Весь округ видит только префектура: проверяющий без района теперь —
+    # такая же незавершённая настройка аккаунта, как инспектор без района.
     aero = await login_as(client, jj, "inspector1", district="Аэропорт")
-    sokol = await login_as(client, jj, "inspector2", district="Сокол")
     okrug = await login_as(client, jj, "okrug_reviewer", role="reviewer", district=None)
     card = await create_card(client, aero)
-    await create_card(client, sokol)
 
-    listed = (await client.get("/api/cards", headers=okrug)).json()
-    assert listed["counts"]["all"] == 2
+    r = await client.get("/api/cards", headers=okrug)
+    assert r.status_code == 403
+    assert "не назначен район" in r.json()["detail"]
     r = await client.get("/api/cards", params={"district_id": DISTRICT_IDS["Сокол"]}, headers=okrug)
-    assert r.status_code == 200 and r.json()["counts"]["all"] == 1
+    assert r.status_code == 403
+    assert (await client.get(f"/api/cards/{card['id']}", headers=okrug)).status_code == 403
 
     r = await client.post("/api/cards", json={"address": "ул. Зорге, 1"}, headers=okrug)
     assert r.status_code == 403
     assert "не назначен район" in r.json()["detail"]
     assert (await upload(client, okrug, card["id"], "after")).status_code == 403
-    detail = (await client.get(f"/api/cards/{card['id']}", headers=okrug)).json()
-    assert detail["permissions"] == {"can_add_before": False, "can_add_after": False, "can_review": False}
+    assert (await client.get("/api/summary", headers=okrug)).status_code == 403
 
 
 async def test_inspector_without_district_sees_no_journal(client, jj, admin):
@@ -118,8 +119,7 @@ async def test_inspector_without_district_sees_no_journal(client, jj, admin):
     assert (await upload(client, orphan, card["id"], "after")).status_code == 403
     r = await client.post("/api/cards", json={"address": "ул. Зорге, 1"}, headers=orphan)
     assert r.status_code == 403
-    # Свод по люкам открыт всем вошедшим.
-    assert (await client.get("/api/summary", headers=orphan)).status_code == 200
+    assert (await client.get("/api/summary", headers=orphan)).status_code == 403
 
 
 async def test_cards_require_login(client):

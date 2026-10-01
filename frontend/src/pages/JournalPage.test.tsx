@@ -86,13 +86,16 @@ describe('JournalPage', () => {
     expect(screen.getByTestId('summary-strip')).toHaveTextContent('Район: Сокол')
   })
 
-  it('без района в журнале обходов — только просмотр', async () => {
+  it('проверяющему без района журнал округа больше не показываем', async () => {
     renderWithProviders(<JournalPage />, {
       user: { ...districtUser, role: 'reviewer', district_id: null, district_name: null, can_create_cards: false },
     })
-    await screen.findByText('ОЛХ-001')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'В журнале обходов вам не назначен район — фотожурнал и свод недоступны. Обратитесь к администратору журнала обходов.',
+    )
     expect(screen.queryByRole('link', { name: /Зафиксировать нарушение/ })).not.toBeInTheDocument()
-    expect(screen.getByText(/доступен только просмотр/)).toBeInTheDocument()
+    expect(cardsApi.list).not.toHaveBeenCalled()
+    expect(districtsApi.list).not.toHaveBeenCalled()
   })
 
   it('инспектору без района журнал не показываем и не запрашиваем', async () => {
