@@ -137,6 +137,51 @@ export interface PeriodParams {
   date_to?: string
 }
 
+/** Подробный свод по одному району (GET /api/summary/district). */
+export interface DistrictSummaryTotals {
+  detected: number
+  accepted: number
+  on_review: number
+  /** Ждут работы района: выявлено + возвращено на доработку. */
+  open: number
+  returned_now: number
+  percent_text: string
+  returns_count: number
+  avg_days_to_accept: number | null
+}
+
+export interface DynamicsBucket {
+  label: string
+  date_from: string
+  date_to: string
+  detected: number
+  accepted: number
+  percent_text: string
+}
+
+export interface OldestOpenCard {
+  id: string
+  label: string
+  address: string
+  status: CardStatus
+  created_at: string
+  age_days: number
+}
+
+export interface DistrictSummary {
+  district: District
+  period: PeriodInfo
+  totals: DistrictSummaryTotals
+  dynamics_unit: 'day' | 'month'
+  dynamics: DynamicsBucket[]
+  oldest_open: OldestOpenCard[]
+}
+
+export interface DistrictSummaryParams extends PeriodParams {
+  /** Префектура указывает район; сотруднику района сервер берёт его район сам. */
+  district_id?: string
+}
+
 export interface CardCreate {
   id: string
   district_id?: string

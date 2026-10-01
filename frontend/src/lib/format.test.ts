@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cardLabel, fixedPercent, formatDateTime, formatIsoDate, formatPercent } from '@/lib/format'
+import { cardLabel, fixedPercent, formatDateTime, formatDays, formatIsoDate, formatPercent } from '@/lib/format'
 
 describe('formatPercent', () => {
   it.each([
@@ -37,5 +37,17 @@ describe('даты', () => {
 
   it('переводит ISO-дату без сдвига поясов', () => {
     expect(formatIsoDate('2026-09-05')).toBe('05.09.2026')
+  })
+})
+
+describe('formatDays', () => {
+  it.each([
+    [2.5, '2,5 дн.'],
+    [3, '3 дн.'],
+    [0, '0 дн.'],
+    [12.3, '12,3 дн.'],
+    [null, '—'],
+  ])('%s → %s', (value, expected) => {
+    expect(formatDays(value)).toBe(expected)
   })
 })
