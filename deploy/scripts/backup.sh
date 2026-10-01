@@ -9,7 +9,7 @@ BACKUP_DIR="$(pwd)/backups"
 UPLOADS_DIR="data/uploads"
 mkdir -p "$BACKUP_DIR"
 
-docker compose -f docker-compose.prod.yml exec -T db \
+docker compose -f docker-compose.prod.yml exec -T luki-db \
   pg_dump -U postgres luki_sao | gzip > "$BACKUP_DIR/db_${STAMP}.sql.gz"
 
 # Архив фото лежит на том же диске, что и сами фото: если места впритык,

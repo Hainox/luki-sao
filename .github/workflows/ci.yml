@@ -82,6 +82,19 @@ jobs:
           docker compose -f docker-compose.prod.yml config >/dev/null
           docker compose -f docker-compose.yml config >/dev/null
 
+      # Имя сервиса — DNS-имя во всех его сетях, а luki-api входит в
+      # jirajura_default рядом с api/db/frontend/proxy журнала обходов:
+      # сервис без префикса luki- перехватывал бы чужие имена (так luki-api
+      # однажды стучался в БД журнала обходов вместо своей).
+      - name: All production services are prefixed with luki-
+        run: |
+          services="$(docker compose -f docker-compose.prod.yml config --services)"
+          echo "$services"
+          if echo "$services" | grep -v '^luki-'; then
+            echo "Сервисы выше — без префикса luki-" >&2
+            exit 1
+          fi
+
       - name: Validate nginx configuration of the web container
         run: |
           docker run --rm \
