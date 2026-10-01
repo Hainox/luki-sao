@@ -62,7 +62,7 @@ describe('HelpPage', () => {
     await user.clear(screen.getByRole('searchbox', { name: 'Поиск по вопросам' }))
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по вопросам' }), 'абракадабра')
     expect(screen.getByRole('status')).toHaveTextContent('Ничего не нашлось')
-    expect(screen.getByRole('link', { name: 'Написать в поддержку' })).toHaveAttribute('href', 'https://obhod-sao.ru/feedback')
+    expect(screen.getByRole('link', { name: 'Написать в поддержку' })).toHaveAttribute('href', 'https://obhod-sao.ru/feedback?app=luki')
   })
 
   it('со страницы входа ведёт ссылка на тему «Вход»', async () => {

@@ -7,7 +7,9 @@ import { useAuthStore } from '@/stores/auth'
 import { FAQ_ROLE_CHIPS, FAQ_TOPICS, filterFaq, type FaqRoleFilter } from '@/lib/faq'
 import type { User } from '@/types'
 
-const FEEDBACK_URL = 'https://obhod-sao.ru/feedback'
+// Своей формы поддержки нет: обращения разбирает администратор журнала
+// обходов, а ?app=luki открывает там форму для люков с отдельным типом.
+const FEEDBACK_URL = 'https://obhod-sao.ru/feedback?app=luki'
 
 const topicDomId = (topicId: string) => `faq-topic-${topicId}`
 
@@ -200,7 +202,7 @@ export function HelpPage() {
           <div>
             <div className="font-bold text-slate-900">Не нашли ответ?</div>
             <div className="text-sm text-slate-500">
-              Опишите проблему в форме обращений журнала обходов — можно без входа и со скриншотом.
+              Опишите проблему в форме обращений — можно без входа и со скриншотом.
             </div>
           </div>
         </div>
