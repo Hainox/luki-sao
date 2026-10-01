@@ -1,4 +1,4 @@
-import { isRetryable } from '@/lib/api'
+import { isRetryable, retryAfterRelogin } from '@/lib/api'
 
 export const MAX_PHOTOS = 5
 export const MAX_PHOTO_SIZE_MB = 20
@@ -36,17 +36,21 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 /** Автоповтор отправки фото, как в журнале обходов: связь в поле «плавает»,
  *  большинство сбоев проходит само за пару секунд. Ошибки, которые
  *  повтором не лечатся (403/409/400 — нет прав, карточка уже принята,
- *  не тот файл), пробрасываются сразу. */
+ *  не тот файл), пробрасываются сразу. Истёкший вход (401) — не сбой:
+ *  отправка ждёт повторного входа и продолжается сама (retryAfterRelogin). */
 export async function uploadWithRetry<T>(
   send: () => Promise<T>,
   delays: number[] = RETRY_DELAYS_MS,
+  beforeResume?: () => Promise<void>,
 ): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await send()
-    } catch (err) {
-      if (attempt >= delays.length || !isRetryable(err)) throw err
-      await sleep(delays[attempt])
+  return retryAfterRelogin(async () => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await send()
+      } catch (err) {
+        if (attempt >= delays.length || !isRetryable(err)) throw err
+        await sleep(delays[attempt])
+      }
     }
-  }
+  }, beforeResume)
 }

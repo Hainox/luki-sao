@@ -12,14 +12,13 @@ import type {
   Summary,
   User,
 } from '@/types'
+import { TOKEN_KEY, useAuthStore, waitForRelogin } from '@/stores/auth'
+import { rememberServerTime } from '@/lib/session'
 
 const BASE_URL = '/api'
 const DEFAULT_TIMEOUT_MS = 30_000
 // Фото уходят по мобильной связи из поля — 30 секунд там часто мало.
 export const PHOTO_UPLOAD_TIMEOUT_MS = 90_000
-
-export const TOKEN_KEY = 'luki_token'
-export const USER_KEY = 'luki_user'
 
 type Params = Record<string, string | number | boolean | null | undefined>
 
@@ -27,6 +26,8 @@ interface RequestConfig {
   params?: Params
   timeout?: number
   responseType?: 'json' | 'blob'
+  /** Без токена: 401 тут — ответ по существу (неверный пароль), а не истёкший вход. */
+  anonymous?: boolean
 }
 
 // Ошибка с тем же контрактом, что и в журнале обходов: сеть/таймаут —
@@ -54,18 +55,11 @@ function buildQuery(params?: Params): string {
   return s ? `?${s}` : ''
 }
 
-function handleUnauthorized() {
-  if (window.location.pathname === '/login') return
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
-  window.location.href = '/login'
-}
-
 async function request<T>(method: string, url: string, body?: unknown, config: RequestConfig = {}): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), config.timeout ?? DEFAULT_TIMEOUT_MS)
   const headers: Record<string, string> = {}
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = config.anonymous ? null : localStorage.getItem(TOKEN_KEY)
   if (token) headers.Authorization = `Bearer ${token}`
 
   let payload: BodyInit | undefined
@@ -83,6 +77,7 @@ async function request<T>(method: string, url: string, body?: unknown, config: R
       body: payload,
       signal: controller.signal,
     })
+    rememberServerTime(res.headers.get('Date'))
     if (!res.ok) {
       const text = await res.text()
       let data: unknown = text
@@ -91,7 +86,13 @@ async function request<T>(method: string, url: string, body?: unknown, config: R
       } catch {
         // тело не JSON — оставляем текстом
       }
-      if (res.status === 401) handleUnauthorized()
+      // Вход истёк — не уводим на /login: переход стёр бы выбранные, но ещё
+      // не отправленные фото и заполненную форму. Поверх страницы откроется
+      // окно повторного входа (ReloginDialog), запрос повторят после него.
+      // Если токен сменился, пока шёл запрос, — входить заново не нужно.
+      if (res.status === 401 && token && localStorage.getItem(TOKEN_KEY) === token) {
+        useAuthStore.getState().expire()
+      }
       throw new ApiError(`HTTP ${res.status}`, { response: { status: res.status, data } })
     }
     if (config.responseType === 'blob') return (await res.blob()) as T
@@ -133,9 +134,46 @@ export function isRetryable(error: unknown): boolean {
   return error.response.status >= 500 || error.response.status === 429
 }
 
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.response?.status === 401
+}
+
+/** Запрос ждал повторного входа, а сотрудник вместо этого вышел. */
+export class LoggedOutError extends Error {
+  constructor() {
+    super('logged out')
+    this.name = 'LoggedOutError'
+  }
+}
+
+/** Запрос, который переживает истёкший вход: на 401 ждёт повторного входа
+ *  поверх страницы и отправляет то же самое ещё раз. Сервер на 401 ничего не
+ *  сохраняет, так что повтор не задвоит ни карточку, ни фото. beforeResume —
+ *  проверка перед повтором (пока ждали входа, карточка могла измениться);
+ *  её ошибка завершает запрос. Вышел вместо входа — LoggedOutError. */
+export async function retryAfterRelogin<T>(send: () => Promise<T>, beforeResume?: () => Promise<void>): Promise<T> {
+  for (;;) {
+    const token = useAuthStore.getState().token
+    try {
+      return await send()
+    } catch (err) {
+      if (!isUnauthorized(err)) throw err
+      const state = useAuthStore.getState()
+      if (state.token === token) {
+        if (state.relogin !== 'expired') throw err
+        if (!(await waitForRelogin())) throw new LoggedOutError()
+      } else if (!state.token) {
+        throw new LoggedOutError()
+      }
+      // Иначе токен сменился, пока шёл запрос (уже вошли заново), — повторяем с новым.
+      await beforeResume?.()
+    }
+  }
+}
+
 export const authApi = {
   login: (login: string, password: string) =>
-    request<LoginResponse>('POST', '/auth/login', { login, password }),
+    request<LoginResponse>('POST', '/auth/login', { login, password }, { anonymous: true }),
   me: () => request<User>('GET', '/auth/me'),
 }
 
