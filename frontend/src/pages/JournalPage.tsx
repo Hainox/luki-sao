@@ -13,6 +13,8 @@ import { periodReady, readPeriod, writePeriod } from '@/lib/period'
 import { hasNoJournal } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth'
 import type { FilterGroup, FilterCounts, User } from '@/types'
+import { PlaceChips } from '@/components/PlaceChips'
+import { readPlace, writePlace } from '@/lib/place'
 
 const PAGE_SIZE = 20
 const FILTER_VALUES = new Set(FILTERS.map((f) => f.value))
@@ -75,6 +77,7 @@ export default function JournalPage() {
   const rawFilter = search.get('filter') as FilterGroup | null
   const filter: FilterGroup = rawFilter && FILTER_VALUES.has(rawFilter) ? rawFilter : 'all'
   const period = readPeriod(search)
+  const place = readPlace(search)
 
   const update = (mutate: (next: URLSearchParams) => void) => {
     const next = new URLSearchParams(search)
@@ -89,7 +92,13 @@ export default function JournalPage() {
     staleTime: 10 * 60_000,
   })
 
-  const params = { ...period, district_id: districtId || undefined, filter, page_size: PAGE_SIZE }
+  const params = {
+    ...period,
+    district_id: districtId || undefined,
+    filter,
+    place: place === 'all' ? undefined : place,
+    page_size: PAGE_SIZE,
+  }
   const query = useInfiniteQuery({
     queryKey: ['cards', params],
     queryFn: ({ pageParam }) => cardsApi.list({ ...params, page: pageParam }),
@@ -133,6 +142,7 @@ export default function JournalPage() {
           resolved={first?.period}
           onChange={(p) => setSearch(writePeriod(search, p), { replace: true })}
         />
+        <PlaceChips value={place} onChange={(p) => setSearch(writePlace(search, p), { replace: true })} />
       </div>
 
       {!periodReady(period) && (

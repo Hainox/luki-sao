@@ -1,16 +1,20 @@
+import type { PlaceKind } from '@/types'
+
 /** Почему кнопку «Зафиксировать нарушение» пока нельзя нажать — причину
  *  показываем прямо под кнопкой, а не молча держим её серой. */
 export function submitBlocker(opts: {
   canCreate: boolean
   photos: number
-  address: string
   needsDistrict: boolean
   districtId: string
+  placeKind: PlaceKind | null
+  territoryId: string | null
 }): string | null {
   if (!opts.canCreate) return 'В журнале обходов вам не назначен район — фиксировать нарушения нельзя'
   if (opts.photos === 0) return 'Сделайте хотя бы одно фото ДО'
-  if (opts.address.trim().length < 3) return 'Укажите адрес'
   if (opts.needsDistrict && !opts.districtId) return 'Выберите район'
+  if (!opts.placeKind) return 'Укажите, где найден люк: ДТ или ОДХ'
+  if (!opts.territoryId) return opts.placeKind === 'dt' ? 'Выберите дворовую территорию' : 'Выберите объект дорожного хозяйства'
   return null
 }
 

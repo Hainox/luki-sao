@@ -8,6 +8,7 @@ import { PhotoTile } from '@/components/PhotoTile'
 import { ReviewActions } from '@/components/ReviewActions'
 import { formatDateTime } from '@/lib/format'
 import type { CardDetail, Photo } from '@/types'
+import { PlaceBadge } from '@/components/PlaceBadge'
 
 function Thumbs({ photos, onOpen }: { photos: Photo[]; onOpen: (p: Photo) => void }) {
   if (photos.length < 2) return null
@@ -40,7 +41,10 @@ function ReviewCard({ card, onDecided }: { card: CardDetail; onDecided: () => vo
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-baseline gap-x-3">
           <h2 className="text-2xl font-bold tracking-tight">{card.label}</h2>
-          <span className="font-semibold text-slate-800">{card.address}</span>
+          <span className="inline-flex items-start gap-1.5 font-semibold text-slate-800">
+            <PlaceBadge kind={card.place_kind} />
+            <span>{card.address}</span>
+          </span>
         </div>
         <div className="text-sm text-slate-600">
           Район: <b>{card.district_name}</b> · зафиксировал {card.created_by.full_name}, {formatDateTime(card.created_at)}
@@ -139,6 +143,7 @@ export default function ReviewPage() {
               <li key={c.id}>
                 <Link to={`/cards/${c.id}`} className="flex min-h-11 items-center gap-3 py-2 hover:text-brand-600">
                   <span className="font-bold">{c.label}</span>
+                  <PlaceBadge kind={c.place_kind} />
                   <span className="min-w-0 flex-1 truncate text-sm text-slate-600">
                     {c.address} · {c.district_name}
                   </span>

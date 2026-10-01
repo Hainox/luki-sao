@@ -21,6 +21,7 @@ vi.mock('@/lib/download', () => ({ saveBlob: vi.fn() }))
 const full: DistrictSummary = {
   district: { id: 'd-aero', name: 'Аэропорт' },
   period: { kind: 'month', date_from: '2026-09-02', date_to: '2026-10-01', label: '02.09.2026 — 01.10.2026' },
+  place: 'all',
   totals: {
     detected: 12,
     accepted: 7,
@@ -41,6 +42,7 @@ const full: DistrictSummary = {
       id: 'card-1',
       label: 'ОЛХ-001',
       address: 'ул. Усиевича, д. 10',
+      place_kind: 'dt',
       status: 'returned',
       created_at: '2026-09-19T08:15:00Z',
       age_days: 12,
@@ -49,6 +51,7 @@ const full: DistrictSummary = {
       id: 'card-5',
       label: 'ОЛХ-005',
       address: 'ул. Зорге, д. 1',
+      place_kind: 'dt',
       status: 'detected',
       created_at: '2026-09-25T08:15:00Z',
       age_days: 6,

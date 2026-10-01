@@ -5,7 +5,9 @@ import App from '@/App'
 import { TOKEN_KEY, useAuthStore } from '@/stores/auth'
 import {
   cardDetail,
+  chooseTerritory,
   districtUser,
+  dtTerritory,
   expiredReply,
   fakeJwt,
   fakeServer,
@@ -28,13 +30,15 @@ const isCreate = (r: FakeRequest) => r.method === 'POST' && r.path === '/api/car
  *  создания карточка. */
 function common(r: FakeRequest) {
   if (r.path === '/api/auth/me') return { status: 200, body: districtUser }
+  if (r.method === 'GET' && r.path === '/api/territories') return { status: 200, body: [dtTerritory] }
   if (r.method === 'GET' && r.path === '/api/cards/card-9') return { status: 200, body: created }
   return { status: 404 }
 }
 
 async function fillForm(user: ReturnType<typeof userEvent.setup>) {
   await user.upload(screen.getByTestId('camera-input'), jpeg())
-  await user.type(screen.getByLabelText('Адрес'), 'ул. Усиевича, 10')
+  await chooseTerritory(user)
+  await user.type(screen.getByLabelText('Уточнение места (необязательно)'), 'у подъезда 2')
   await user.type(screen.getByLabelText('Комментарий (необязательно)'), 'Провал крышки')
 }
 
@@ -60,8 +64,9 @@ describe('NewCardPage: вход истёк посреди работы', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Время входа истекло' })
     expect(dialog).toHaveTextContent('Войдите снова — введённые данные и фото сохранены')
-    // Страница под окном не тронута: адрес, комментарий и выбранное фото на месте.
-    expect(screen.getByLabelText('Адрес')).toHaveValue('ул. Усиевича, 10')
+    // Страница под окном не тронута: объект, уточнение, комментарий и выбранное фото на месте.
+    expect(screen.getByTestId('picked-territory')).toHaveTextContent('Усиевича ул. 8')
+    expect(screen.getByLabelText('Уточнение места (необязательно)')).toHaveValue('у подъезда 2')
     expect(screen.getByLabelText('Комментарий (необязательно)')).toHaveValue('Провал крышки')
     expect(screen.getByText('Выбрано: 1', { exact: false })).toBeInTheDocument()
     expect(screen.getByAltText('Фото ДО')).toBeInTheDocument()

@@ -14,6 +14,8 @@ import { notify } from '@/lib/toast'
 import { DistrictSummary } from '@/pages/DistrictSummaryPage'
 import { useAuthStore } from '@/stores/auth'
 import type { SummaryRow } from '@/types'
+import { PlaceChips } from '@/components/PlaceChips'
+import { placeSuffix, readPlace, writePlace } from '@/lib/place'
 
 /** Ссылка на подробный свод района с тем же периодом. */
 function districtLink(row: SummaryRow, search: URLSearchParams): string | null {
@@ -88,10 +90,12 @@ function MobileRow({ row, to, total = false }: { row: SummaryRow; to?: string | 
 function OkrugSummary() {
   const [search, setSearch] = useSearchParams()
   const period = readPeriod(search)
+  const place = readPlace(search)
+  const params = { ...period, place: place === 'all' ? undefined : place }
   const [downloading, setDownloading] = useState(false)
   const query = useQuery({
-    queryKey: ['summary', period],
-    queryFn: () => summaryApi.get(period),
+    queryKey: ['summary', params],
+    queryFn: () => summaryApi.get(params),
     enabled: periodReady(period),
   })
   const data = query.data
@@ -100,9 +104,9 @@ function OkrugSummary() {
   const download = async () => {
     setDownloading(true)
     try {
-      const blob = await summaryApi.xlsx(period)
+      const blob = await summaryApi.xlsx(params)
       const suffix = data && data.period.kind !== 'all' ? ` ${data.period.label}` : ''
-      saveBlob(blob, `Свод по люкам САО${suffix}.xlsx`)
+      saveBlob(blob, `Свод по люкам САО${placeSuffix(place)}${suffix}.xlsx`)
     } catch (err) {
       notify.error(describeError(err, 'Не удалось скачать Excel'))
     } finally {
@@ -125,6 +129,7 @@ function OkrugSummary() {
         resolved={data?.period}
         onChange={(p) => setSearch(writePeriod(search, p), { replace: true })}
       />
+      <PlaceChips value={place} onChange={(p) => setSearch(writePlace(search, p), { replace: true })} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Выявлено" value={total?.detected ?? '…'} tone="text-slate-900" />

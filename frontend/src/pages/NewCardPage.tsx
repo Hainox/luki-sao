@@ -7,8 +7,9 @@ import { MAX_PHOTOS, PHOTO_ACCEPT, photoProblem, uploadWithRetry } from '@/lib/p
 import { invalidateCardQueries } from '@/lib/queries'
 import { newCardId, submitBlocker } from '@/lib/newCard'
 import { notify } from '@/lib/toast'
+import { TerritoryPicker } from '@/components/TerritoryPicker'
 import { askReloginIfExpiring, useAuthStore } from '@/stores/auth'
-import type { CardDetail } from '@/types'
+import type { CardDetail, PlaceKind, Territory } from '@/types'
 
 type Coords = { lat: number; lon: number; accuracy: number }
 
@@ -60,7 +61,9 @@ export default function NewCardPage() {
   // сервер вернёт уже созданную карточку, а не заведёт вторую.
   const [cardId] = useState(newCardId)
   const [photos, setPhotos] = useState<File[]>([])
-  const [address, setAddress] = useState('')
+  const [addressNote, setAddressNote] = useState('')
+  const [placeKind, setPlaceKind] = useState<PlaceKind | null>(null)
+  const [territory, setTerritory] = useState<Territory | null>(null)
   const [districtId, setDistrictId] = useState(user.is_prefecture ? '' : (user.district_id ?? ''))
   const [comment, setComment] = useState('')
   const [coords, setCoords] = useState<Coords | null>(null)
@@ -86,9 +89,10 @@ export default function NewCardPage() {
   const blocker = submitBlocker({
     canCreate: user.can_create_cards,
     photos: photos.length,
-    address,
     needsDistrict: user.is_prefecture,
     districtId,
+    placeKind,
+    territoryId: territory?.id ?? null,
   })
 
   const addPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,14 +157,16 @@ export default function NewCardPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (blocker || busy) return
+    if (blocker || busy || !placeKind || !territory) return
     setBusy('Сохраняем карточку…')
     let card: CardDetail
     try {
       card = await retryAfterRelogin(() =>
         cardsApi.create({
           id: cardId,
-          address: address.trim(),
+          place_kind: placeKind,
+          territory_id: territory.id,
+          address_note: addressNote.trim() || undefined,
           district_id: user.is_prefecture ? districtId : undefined,
           comment: comment.trim() || undefined,
           lat: coords?.lat,
@@ -242,27 +248,21 @@ export default function NewCardPage() {
       </section>
 
       <section className="card flex flex-col gap-4 p-4">
-        <div>
-          <label htmlFor="address" className="label">
-            Адрес
-          </label>
-          <input
-            id="address"
-            className="field"
-            value={address}
-            maxLength={500}
-            autoComplete="off"
-            placeholder="Например: ул. Усиевича, д. 10, у второго подъезда"
-            onChange={(e) => setAddress(e.target.value)}
-          />
-        </div>
-
         {user.is_prefecture ? (
           <div>
             <label htmlFor="district" className="label">
               Район
             </label>
-            <select id="district" className="field" value={districtId} onChange={(e) => setDistrictId(e.target.value)}>
+            <select
+              id="district"
+              className="field"
+              value={districtId}
+              onChange={(e) => {
+                setDistrictId(e.target.value)
+                // Объекты справочника — свои у каждого района.
+                setTerritory(null)
+              }}
+            >
               <option value="">Выберите район</option>
               {districts.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -279,6 +279,7 @@ export default function NewCardPage() {
 
         <div className="flex flex-col gap-2">
           <span className="label mb-0">Место на карте (необязательно)</span>
+          <p className="-mt-1 text-sm text-slate-500">Подскажем ДТ и ОДХ района рядом с вами.</p>
           {coords ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="rounded-lg bg-emerald-50 px-3 py-2 font-semibold text-emerald-800 ring-1 ring-emerald-200">
@@ -296,6 +297,32 @@ export default function NewCardPage() {
             </button>
           )}
           {geoError && <p className="text-sm text-orange-700">{geoError}</p>}
+        </div>
+
+        <TerritoryPicker
+          districtId={user.is_prefecture ? districtId : ''}
+          districtReady={user.is_prefecture ? Boolean(districtId) : user.can_create_cards}
+          kind={placeKind}
+          onKindChange={setPlaceKind}
+          value={territory}
+          onChange={setTerritory}
+          coords={coords}
+          disabled={Boolean(busy)}
+        />
+
+        <div>
+          <label htmlFor="address-note" className="label">
+            Уточнение места (необязательно)
+          </label>
+          <input
+            id="address-note"
+            className="field"
+            value={addressNote}
+            maxLength={300}
+            autoComplete="off"
+            placeholder="Например: у второго подъезда"
+            onChange={(e) => setAddressNote(e.target.value)}
+          />
         </div>
 
         <div>
