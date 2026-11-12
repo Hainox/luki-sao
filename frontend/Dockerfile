@@ -7,7 +7,7 @@ RUN npm run build
 
 # Непривилегированный nginx (слушает 8080, pid/temp в /tmp) — порт наружу
 # не публикуется, к контейнеру ходит только общий TLS-proxy журнала обходов.
-FROM nginxinc/nginx-unprivileged:1.30-alpine@sha256:ed04ec1ff34502c339ee5c3ae3f855442398edc1d05591e2b98981dcbbd20b1e
+FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:26b0bf6fbf07297983cb341998d79c831508787de26627dd2a112321b9c3a4af
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Базовый образ и так работает от nginx (UID 101); явный USER — чтобы это
